@@ -64,6 +64,30 @@ export default function DoctorDashboard() {
     }
   }
 
+  const handlePatientAction = async (patientId, action) => {
+    const patient = patients.find(p => p.id === patientId);
+    if (!patient || !action) return;
+
+    if (window.confirm(`Confirm ${action} for ${patient.name}?`)) {
+      setSubmitting(true);
+      try {
+        if (action === 'Discharge') {
+          await updatePatientRecord(patientId, { status: 'Discharged' });
+        } else if (action === 'Transfer') {
+          const newWard = window.prompt("Enter destination ward:", patient.assignedWard || 'General');
+          if (newWard) {
+            await updatePatientRecord(patientId, { assignedWard: newWard });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Action failed.");
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  };
+
   if (loading) return <div className="container"><p>Loading Patient Schedule...</p></div>
 
   return (
@@ -122,8 +146,18 @@ export default function DoctorDashboard() {
                     </div>
                     <span className={`badge badge-${patient.urgencyLevel?.toLowerCase() || 'standard'}`}>{patient.urgencyLevel}</span>
                   </div>
-                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '1rem', fontSize: '0.8rem' }}>
+                  <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
                     <Link href={`/patient/${patient.id}`} style={{ color: 'var(--primary)', fontWeight: '600' }}>View Full Profile</Link>
+                    <select
+                         className="btn"
+                         style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', border: '1px solid var(--border)' }}
+                         onChange={(e) => handlePatientAction(patient.id, e.target.value)}
+                         value=""
+                       >
+                         <option value="" disabled>Action</option>
+                         <option value="Discharge">Discharge</option>
+                         <option value="Transfer">Transfer</option>
+                    </select>
                   </div>
                 </div>
               ))}

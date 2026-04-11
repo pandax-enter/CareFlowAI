@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthContext'
-import { subscribeToNursePatients, subscribeToAllPatients, subscribeToWardPatients, db, subscribeToAlerts } from '@/lib/firebase'
+import { subscribeToNursePatients, subscribeToAllPatients, subscribeToWardPatients, db, subscribeToAlerts, updatePatientRecord } from '@/lib/firebase'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -51,26 +51,33 @@ export default function DashboardPage() {
     };
   }, [roleData, activeTab, managerFilter]);
 
-  const runMonitoring = async (patientId) => {
+  const handlePatientAction = async (patientId, action) => {
     const patient = patients.find(p => p.id === patientId);
-    if (!patient) return;
+    if (!patient || !action) return;
 
-    setLoadingMap(prev => ({ ...prev, [patientId]: true }))
-    try {
-      const res = await fetch('/api/monitor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ patient }),
-      })
-      const data = await res.json()
-      // Note: we don't need to manually update state because onSnapshot handles it
-    } catch (error) {
-      console.error('Monitoring error:', error)
-      alert("Failed to analyze patient vitals")
-    } finally {
-      setLoadingMap(prev => ({ ...prev, [patientId]: false }))
+    const confirmMsg = action === 'Discharge' 
+      ? `Confirm Discharge for ${patient.name}? This will remove them from active monitoring.`
+      : `Initiate Transfer for ${patient.name}?`;
+
+    if (window.confirm(confirmMsg)) {
+      setLoadingMap(prev => ({ ...prev, [patientId]: true }));
+      try {
+        if (action === 'Discharge') {
+          await updatePatientRecord(patientId, { status: 'Discharged' });
+        } else if (action === 'Transfer') {
+          const newWard = window.prompt("Enter destination ward:", patient.assignedWard);
+          if (newWard) {
+            await updatePatientRecord(patientId, { assignedWard: newWard });
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Action failed.");
+      } finally {
+        setLoadingMap(prev => ({ ...prev, [patientId]: false }));
+      }
     }
-  }
+  };
 
   if (loading) return <div className="container"><p>Loading Dashboard...</p></div>
 
@@ -201,8 +208,9 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {displayList.map(patient => (
-                <tr key={patient.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
+              {displayList.map(patient => {
+                return (
+                  <tr key={patient.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.2s' }}>
                   <td style={{ padding: '1.25rem 1rem' }}>
                     <Link href={`/patient/${patient.id}`} style={{ textDecoration: 'none' }}>
                       <div style={{ fontWeight: 'bold', color: 'var(--text-dark)' }}>{patient.name}</div>
@@ -247,23 +255,22 @@ export default function DashboardPage() {
                     )}
                   </td>
                   <td style={{ padding: '1rem', textAlign: 'right' }}>
-                    <button
-                      className="btn"
-                      style={{
-                        fontSize: '0.75rem',
-                        padding: '0.4rem 0.8rem',
-                        background: '#f1f5f9',
-                        border: '1px solid var(--border)',
-                        fontWeight: '600'
-                      }}
-                      onClick={() => runMonitoring(patient.id)}
-                      disabled={loadingMap[patient.id]}
-                    >
-                      {loadingMap[patient.id] ? 'Analyzing...' : 'Analyze Vitals'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                       <select
+                         className="btn"
+                         style={{ fontSize: '0.75rem', padding: '0.4rem 0.5rem', border: '1px solid var(--border)' }}
+                         onChange={(e) => handlePatientAction(patient.id, e.target.value)}
+                         value=""
+                         disabled={loadingMap[patient.id]}
+                       >
+                         <option value="" disabled>Action</option>
+                         <option value="Discharge">Discharge</option>
+                         <option value="Transfer">Transfer</option>
+                       </select>
+                    </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         )}

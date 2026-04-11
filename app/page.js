@@ -317,14 +317,34 @@ export default function TriagePage() {
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary" 
-            style={{ width: '100%', padding: '1rem', fontSize: '1.1rem', fontWeight: 'bold' }}
-            disabled={loading}
-          >
-            {loading ? 'Analyzing Clinical Priority...' : 'Registration Analysis'}
-          </button>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button 
+              type="submit" 
+              className="btn btn-primary" 
+              style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', fontWeight: 'bold' }}
+              disabled={loading}
+            >
+              {loading ? 'Analyzing...' : '1. Clinical Analysis'}
+            </button>
+            <button 
+              type="button"
+              onClick={handleRegister}
+              className="btn" 
+              style={{ 
+                flex: 1, 
+                padding: '1rem', 
+                fontSize: '1.1rem', 
+                fontWeight: 'bold',
+                background: result ? 'var(--success)' : '#f1f5f9',
+                color: result ? 'white' : 'var(--text-muted)',
+                border: result ? 'none' : '1px solid var(--border)',
+                cursor: result ? 'pointer' : 'not-allowed'
+              }}
+              disabled={!result || admitLoading}
+            >
+              {admitLoading ? 'Processing...' : '2. Register'}
+            </button>
+          </div>
         </form>
       </section>
 
@@ -359,15 +379,6 @@ export default function TriagePage() {
                </div>
              </div>
           </div>
-
-          <button 
-            onClick={handleRegister}
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '1.25rem', fontSize: '1.2rem', background: 'var(--success)', border: 'none' }}
-            disabled={admitLoading}
-          >
-            {admitLoading ? 'Processing System Registration...' : 'Register'}
-          </button>
         </div>
       )}
 
