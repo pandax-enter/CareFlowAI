@@ -3,7 +3,8 @@ import { AuthProvider, useAuth } from '../components/AuthContext';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { subscribeToNursePatients } from '@/lib/firebase';
+import { subscribeToNursePatients, subscribeToDoctorPatients } from '@/lib/firebase';
+import { useRef } from 'react';
 
 export function Navbar() {
   const { roleData, logout } = useAuth();
@@ -60,6 +61,44 @@ export function Navbar() {
       });
       return () => unsub();
     }
+  }, [roleData]);
+
+  // New Patient Assignment Alert Engine
+  const knownPatientsRef = useRef(new Set());
+  const initialLoadRef = useRef(true);
+
+  useEffect(() => {
+    if (!roleData || !roleData.linkedId) return;
+
+    const assignAlert = (patients) => {
+       const currentIds = new Set(patients.map(p => p.id));
+       
+       if (initialLoadRef.current) {
+          knownPatientsRef.current = currentIds;
+          initialLoadRef.current = false;
+          return;
+       }
+
+       // Find new patients that weren't in the previous state array
+       const newPatients = patients.filter(p => !knownPatientsRef.current.has(p.id));
+       
+       if (newPatients.length > 0) {
+          const newPatient = newPatients[0];
+          alert(`🚨 System Alert:\nNew Patient Assigned!\n\nPatient: ${newPatient.name || 'Unknown'}\nRisk Level: ${newPatient.riskLevel || 'Standard'}\nWard/Unit: ${newPatient.assignedWard || 'General'}\n\nPlease check your dashboard.`);
+          
+          // Update known
+          knownPatientsRef.current = currentIds;
+       }
+    };
+
+    let unsub = () => {};
+    if (roleData.role === 'nurse') {
+        unsub = subscribeToNursePatients(roleData.linkedId, assignAlert);
+    } else if (roleData.role === 'doctor') {
+        unsub = subscribeToDoctorPatients(roleData.linkedId, assignAlert);
+    }
+    
+    return () => unsub();
   }, [roleData]);
 
   return (

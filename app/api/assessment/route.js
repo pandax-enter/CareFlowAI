@@ -36,8 +36,10 @@ export async function POST(req) {
       Here is the current Hospital Capacity context (RAG Data):
       ${ragContext}
 
-      Based on this patient's profile and the current hospital capacity context, provide a clinical assessment.
-      If the patient is critical and ICU utilization across hospitals is very high, note the strain and recommend the best course of action.
+      Based on this patient's profile, provide a clinical assessment for the bedside Nurse or Doctor.
+      Do NOT suggest routing to a different hospital for initial admission, as this patient is ALREADY ADMITTED.
+      Provide current actionable tasks, monitoring priorities, and their general condition.
+      HOWEVER, if the patient's symptoms are mild, stabilized, or their risk level is Low, evaluate the hospital capacity context. If hospitals are pressed for space, strongly evaluate and suggest whether it is time to Discharge the patient, or transfer them to a less intensive ward to free up space.
 
       Respond ONLY with a valid JSON object matching this schema:
       {
