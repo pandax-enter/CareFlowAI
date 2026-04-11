@@ -343,8 +343,8 @@ export default function TriagePage() {
                 padding: '1rem', 
                 fontSize: '1.1rem', 
                 fontWeight: 'bold',
-                background: result ? 'var(--success)' : '#f1f5f9',
-                color: result ? 'white' : 'var(--text-muted)',
+                background: result ? '#f1f5f9' : '#f1f5f9',
+                color: result ? 'black' : '#b6bcc9',
                 border: result ? 'none' : '1px solid var(--border)',
                 cursor: result ? 'pointer' : 'not-allowed'
               }}
@@ -365,25 +365,11 @@ export default function TriagePage() {
                 <span className={`badge badge-${result.urgencyLevel?.toLowerCase()}`}>{result.urgencyLevel}</span>
              </div>
              
-             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
                <div>
                   <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Triage & Specialty</h3>
                   <p style={{ fontWeight: '500', marginTop: '0.2rem' }}>{result.requiredSpecialty} Unit ({result.destination})</p>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-dark)' }}>{result.explanation}</p>
-               </div>
-               <div>
-                  <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Routing Feasibility</h3>
-                  {routingResult && routingResult.isRoutingNeeded ? (
-                     <div>
-                       <p style={{ fontWeight: 'bold', color: '#b45309', margin: '0.2rem 0' }}>Diversion Recommended</p>
-                       <p style={{ fontSize: '0.85rem', color: '#92400e' }}>Current facility at capacity or priority mismatch. Diverting to: <strong>{routingResult.recommendedHospital}</strong></p>
-                     </div>
-                  ) : (
-                     <div>
-                       <p style={{ fontWeight: 'bold', color: '#15803d', margin: '0.2rem 0' }}>Admittable</p>
-                       <p style={{ fontSize: '0.85rem', color: '#166534' }}>Space available at {formData.hospitalPref}.</p>
-                     </div>
-                  )}
                </div>
              </div>
           </div>
@@ -393,11 +379,11 @@ export default function TriagePage() {
       {/* Post Registration Modal/Popup */}
       {admitSuccess && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="card" style={{ width: '90%', maxWidth: '500px', background: 'white', textAlign: 'center', borderLeft: admitSuccess.isPhysicallyAdmittable ? '8px solid var(--success)' : '8px solid var(--warning)' }}>
-             <h2 className="title" style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#166534' }}>Successful Registration to Hospital System</h2>
+          <div className="card" style={{ width: '90%', maxWidth: '500px', background: 'white', textAlign: 'center', borderLeft: (!routingResult || !routingResult.isRoutingNeeded) ? '8px solid var(--success)' : '8px solid var(--warning)' }}>
+             
              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Patient details securely recorded.</p>
              
-             {admitSuccess.isPhysicallyAdmittable ? (
+             {(!routingResult || !routingResult.isRoutingNeeded) ? (
                 <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Consultation Number</div>
                    <div style={{ fontSize: '3rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', marginBottom: '1rem' }}>{admitSuccess.consultationNumber}</div>
@@ -407,7 +393,8 @@ export default function TriagePage() {
                 <div style={{ background: '#fef3c7', padding: '1.5rem', borderRadius: '12px', border: '1px solid #fde68a', color: '#92400e' }}>
                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🚑</div>
                    <p style={{ fontWeight: 'bold', fontSize: '1.1rem', margin: '0 0 0.5rem 0' }}>Hospital Diversion Directed</p>
-                   <p style={{ margin: 0 }}>Current facility is saturated or patient priority is low. Please safely proceed to the nearest available allocated hospital: <strong>{admitSuccess.hospital}</strong></p>
+                   <p style={{ margin: 0, fontSize: '0.9rem', color: '#92400e' }}>{routingResult.reason}</p>
+                   <p style={{ marginTop: '0.75rem', fontSize: '1.05rem' }}>Please safely proceed to the matched facility: <strong>{routingResult.recommendedHospital}</strong></p>
                 </div>
              )}
 

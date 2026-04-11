@@ -47,7 +47,7 @@ export async function POST(req) {
 
     if (process.env.GEMINI_API_KEY) {
       // Using gemini-2.5-flash to ensure compatibility with the updated API Key
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
       const prompt = `
         You are a Hospital Flow Optimization AI for Malaysia. 
