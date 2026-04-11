@@ -92,11 +92,6 @@ export default function DoctorDashboard() {
             </optgroup>
           </select>
         )}
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <Link href="/doctor/register" className="btn btn-primary" style={{ padding: '0.6rem 1rem', borderRadius: '20px' }}>
-            + Register New Patient
-          </Link>
-        </div>
       </header>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedPatient ? '1fr 1fr' : '1fr', gap: '2rem' }}>

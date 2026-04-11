@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/AuthContext'
-import { subscribeToNursePatients, subscribeToAllPatients, subscribeToWardPatients, db } from '@/lib/firebase'
+import { subscribeToNursePatients, subscribeToAllPatients, subscribeToWardPatients, db, subscribeToAlerts } from '@/lib/firebase'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -14,32 +14,41 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState('my_patients')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [alerts, setAlerts] = useState([])
 
   const [managerFilter, setManagerFilter] = useState('All')
 
   useEffect(() => {
     if (!roleData) return;
 
-    let unsubscribe = () => {};
+    let unsubscribe = () => { };
 
     if (roleData.role === 'manager') {
-       if (managerFilter === 'All') {
-          unsubscribe = subscribeToAllPatients((data) => { setPatients(data); setLoading(false); });
-       } else if (activeTab === 'my_patients') {
-          unsubscribe = subscribeToNursePatients(managerFilter, (data) => { setPatients(data); setLoading(false); });
-       } else {
-          unsubscribe = subscribeToWardPatients(managerFilter, (data) => { setPatients(data); setLoading(false); });
-       }
+      if (managerFilter === 'All') {
+        unsubscribe = subscribeToAllPatients((data) => { setPatients(data); setLoading(false); });
+      } else if (activeTab === 'my_patients') {
+        unsubscribe = subscribeToNursePatients(managerFilter, (data) => { setPatients(data); setLoading(false); });
+      } else {
+        unsubscribe = subscribeToWardPatients(managerFilter, (data) => { setPatients(data); setLoading(false); });
+      }
     } else {
-       if (!roleData.linkedId) return;
-       if (activeTab === 'my_patients') {
-         unsubscribe = subscribeToNursePatients(roleData.linkedId, (data) => { setPatients(data); setLoading(false); });
-       } else {
-         unsubscribe = subscribeToWardPatients(roleData.department, (data) => { setPatients(data); setLoading(false); }); 
-       }
+      if (!roleData.linkedId) return;
+      if (activeTab === 'my_patients') {
+        unsubscribe = subscribeToNursePatients(roleData.linkedId, (data) => { setPatients(data); setLoading(false); });
+      } else {
+        unsubscribe = subscribeToWardPatients(roleData.department, (data) => { setPatients(data); setLoading(false); });
+      }
     }
 
-    return () => unsubscribe();
+    // Real-time listener for clinical alerts
+    const unsubAlerts = subscribeToAlerts((data) => {
+      setAlerts(data.filter(a => a.status === 'active'))
+    })
+
+    return () => {
+      unsubscribe()
+      unsubAlerts()
+    };
   }, [roleData, activeTab, managerFilter]);
 
   const runMonitoring = async (patientId) => {
@@ -82,6 +91,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
+
       {/* Stats Overview */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
         <div className="card" style={{ borderLeft: '4px solid var(--critical)' }}>
@@ -106,9 +116,9 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', gap: '0.5rem', background: '#f1f5f9', padding: '0.25rem', borderRadius: '8px' }}>
           <button
             className="btn"
-            style={{ 
+            style={{
               fontSize: '0.85rem',
-              background: activeTab === 'my_patients' ? 'white' : 'transparent', 
+              background: activeTab === 'my_patients' ? 'white' : 'transparent',
               boxShadow: activeTab === 'my_patients' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               color: activeTab === 'my_patients' ? 'var(--primary)' : 'var(--text-muted)',
               border: 'none',
@@ -120,9 +130,9 @@ export default function DashboardPage() {
           </button>
           <button
             className="btn"
-            style={{ 
+            style={{
               fontSize: '0.85rem',
-              background: activeTab === 'shared' ? 'white' : 'transparent', 
+              background: activeTab === 'shared' ? 'white' : 'transparent',
               boxShadow: activeTab === 'shared' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               color: activeTab === 'shared' ? 'var(--primary)' : 'var(--text-muted)',
               border: 'none',
@@ -176,8 +186,8 @@ export default function DashboardPage() {
       <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
         {displayList.length === 0 ? (
           <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-             <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📋</div>
-             <p>No patients currently assigned in this category.</p>
+            <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📋</div>
+            <p>No patients currently assigned in this category.</p>
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -200,14 +210,31 @@ export default function DashboardPage() {
                     </Link>
                   </td>
                   <td style={{ padding: '1rem' }}>
-                    <span className={`badge badge-${(patient.riskLevel || 'Low').toLowerCase()}`} style={{ fontSize: '0.7rem' }}>
-                      {patient.urgencyLevel?.toUpperCase() || patient.riskLevel?.toUpperCase()}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span className={`badge badge-${(patient.riskLevel || patient.urgencyLevel || 'low').toLowerCase()}`} style={{ fontSize: '0.7rem', width: 'fit-content' }}>
+                        {patient.riskLevel?.toUpperCase() || patient.urgencyLevel?.toUpperCase()}
+                      </span>
+                      <span style={{
+                        fontSize: '0.65rem',
+                        fontWeight: 'bold',
+                        color: patient.status === 'Admitted' ? '#2563eb' :
+                          patient.status === 'Waiting' ? '#d97706' :
+                            patient.status === 'Discharged' ? '#64748b' : '#7c3aed',
+                        background: patient.status === 'Admitted' ? '#eff6ff' :
+                          patient.status === 'Waiting' ? '#fffbeb' :
+                            patient.status === 'Discharged' ? '#f1f5f9' : '#f5f3ff',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        width: 'fit-content'
+                      }}>
+                        {patient.status || 'Triage'}
+                      </span>
+                    </div>
                   </td>
                   <td style={{ padding: '1rem' }}>
                     <div style={{ fontSize: '0.85rem', display: 'flex', gap: '0.5rem' }}>
-                       <span title="HR"><span style={{ color: 'var(--critical)' }}>❤️</span> {patient.vitals?.hr || '-'}</span>
-                       <span title="Temp"><span style={{ color: 'var(--primary)' }}>🌡️</span> {patient.vitals?.temp || '-'}°</span>
+                      <span title="HR"><span style={{ color: 'var(--critical)' }}>❤️</span> {patient.vitals?.hr || '-'}</span>
+                      <span title="Temp"><span style={{ color: 'var(--primary)' }}>🌡️</span> {patient.vitals?.temp || '-'}°</span>
                     </div>
                   </td>
                   <td style={{ padding: '1rem' }}>
@@ -222,10 +249,10 @@ export default function DashboardPage() {
                   <td style={{ padding: '1rem', textAlign: 'right' }}>
                     <button
                       className="btn"
-                      style={{ 
-                        fontSize: '0.75rem', 
-                        padding: '0.4rem 0.8rem', 
-                        background: '#f1f5f9', 
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.4rem 0.8rem',
+                        background: '#f1f5f9',
                         border: '1px solid var(--border)',
                         fontWeight: '600'
                       }}

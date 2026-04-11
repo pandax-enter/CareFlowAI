@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { db, subscribeToAlerts, deleteAlert, subscribeToInventory, createAlert } from '@/lib/firebase'
-import { collection, onSnapshot, doc, updateDoc, query, where, getDocs } from 'firebase/firestore'
+import { useState, useEffect, useRef } from 'react'
+import { db, subscribeToInventory } from '@/lib/firebase'
+import { collection, onSnapshot, doc, updateDoc, query, where } from 'firebase/firestore'
 import { useAuth } from '@/components/AuthContext'
 import Link from 'next/link'
 
@@ -11,10 +11,11 @@ export default function ManagerDashboard() {
   const [nurses, setNurses] = useState([])
   const [doctors, setDoctors] = useState([])
   const [patients, setPatients] = useState([])
-  const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [activeTab, setActiveTab] = useState('nurses')
+  const [scheduledSlot, setScheduledSlot] = useState(null)
+  const [scheduling, setScheduling] = useState(false)
 
   useEffect(() => {
     // Real-time listener for nurses
@@ -40,44 +41,20 @@ export default function ManagerDashboard() {
       setDoctors(data)
     })
 
-    // Real-time listener for patients (Admitted only)
-    const qPatients = query(collection(db, 'patients'), where('status', '==', 'Admitted'));
+    // Real-time listener for patients (Admitted & Waiting for consultation)
+    const qPatients = query(collection(db, 'patients'), where('status', 'in', ['Admitted', 'Waiting']));
     const unsubPatients = onSnapshot(qPatients, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPatients(data);
       setLoading(false);
     });
 
-    // Real-time listener for alerts
-    const unsubAlerts = subscribeToAlerts((data) => {
-      setAlerts(data.filter(a => a.status !== 'resolved'));
-    });
-
-    // Real-time listener for inventory (auto-alert generation)
-    const unsubInventory = subscribeToInventory((items) => {
-      items.forEach(async (item) => {
-        if (item.stock < (item.minThreshold || 50)) {
-           // Check if an alert already exists for this item
-           const existing = alerts.find(a => a.message.includes(item.name) && a.status === 'active');
-           if (!existing) {
-             await createAlert({ 
-               message: `Low Stock: ${item.name} (${item.stock} left)`, 
-               type: 'warning',
-               sourceId: item.id
-             });
-           }
-        }
-      });
-    });
-
     return () => {
       unsubNurses()
       unsubDoctors()
       unsubPatients()
-      unsubAlerts()
-      unsubInventory()
     }
-  }, [alerts])
+  }, [])
 
   const handlePayIncrease = async (nurseId) => {
     setActionLoading(nurseId)
@@ -117,7 +94,7 @@ export default function ManagerDashboard() {
       </header>
 
       {/* High-level Overview Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
           <div className="card" style={{ background: 'var(--primary)', color: 'white' }}>
               <h3 style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Active Nurses</h3>
               <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{nurses.length}</div>
@@ -126,19 +103,13 @@ export default function ManagerDashboard() {
               <h3 style={{ fontSize: '0.8rem', opacity: 0.9, marginBottom: '0.5rem', textTransform: 'uppercase' }}>Doctors on Duty</h3>
               <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{doctors.length}</div>
           </div>
-          <div className="card" style={{ background: '#f8fafc', borderLeft: '4px solid var(--success)' }}>
-              <h3 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Avg Performance</h3>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
-                  {nurses.length ? Math.round(nurses.reduce((acc, n) => acc + (n.performanceScore || 0), 0) / nurses.length) : 0}%
-              </div>
-          </div>
-          <div className="card" style={{ background: '#f8fafc', borderLeft: '4px solid var(--warning)' }}>
-              <h3 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Active Alerts</h3>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--warning)' }}>{alerts.length}</div>
+          <div className="card" style={{ background: '#f8fafc', borderLeft: '4px solid var(--primary)' }}>
+              <h3 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Clinical Workload</h3>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{patients.filter(p => ['Admitted', 'Waiting'].includes(p.status)).length}</div>
           </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
         <div>
           {/* Tabs for Roster View */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', background: '#f1f5f9', padding: '0.4rem', borderRadius: '8px', width: 'fit-content' }}>
@@ -267,37 +238,6 @@ export default function ManagerDashboard() {
           </div>
         </div>
 
-        <aside>
-          <div className="card" style={{ padding: '1rem' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              🚩 Clinical Alerts
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {alerts.length === 0 ? (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '2rem 0' }}>No active alerts</p>
-              ) : (
-                alerts.map(alert => (
-                  <div key={alert.id} style={{ 
-                    padding: '0.75rem', 
-                    borderRadius: '8px', 
-                    background: alert.type === 'critical' ? '#fee2e2' : '#fef3c7', 
-                    border: `1px solid ${alert.type === 'critical' ? '#fecaca' : '#fde68a'}`,
-                    position: 'relative'
-                  }}>
-                    <button 
-                      onClick={() => deleteAlert(alert.id)}
-                      style={{ position: 'absolute', top: '5px', right: '5px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.8rem', opacity: 0.5 }}
-                    >✕</button>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: alert.type === 'critical' ? '#991b1b' : '#92400e', marginBottom: '0.25rem' }}>{alert.message}</div>
-                    <div style={{ fontSize: '0.7rem', color: alert.type === 'critical' ? '#b91c1c' : '#78350f', opacity: 0.8 }}>
-                      {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </aside>
       </div>
     </div>
   )
