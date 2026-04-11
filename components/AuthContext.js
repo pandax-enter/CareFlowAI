@@ -9,7 +9,7 @@ const AuthContext = createContext({});
 const ROLE_ROUTES = {
     registration_staff: ['/'],
     nurse:              ['/', '/dashboard', '/inventory', '/patient'],
-    doctor:             ['/doctor', '/patient'],
+    doctor:             ['/', '/doctor', '/patient', '/inventory'],
     manager:            null, // null = all routes
 };
 

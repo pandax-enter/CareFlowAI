@@ -12,17 +12,23 @@ export function Navbar() {
 
   const isActive = (path) => {
     if (path === '/') return pathname === '/';
+    // Strict matching for doctor dashboard to prevent overlap with Registration
+    if (path === '/doctor') return pathname === '/doctor' || pathname.startsWith('/doctor/');
     return pathname.startsWith(path);
   };
 
-  const linkStyle = (path) => ({
-    textDecoration: 'none',
-    color: isActive(path) ? 'var(--primary)' : 'var(--text-muted)',
-    fontWeight: isActive(path) ? 'bold' : '500',
-    borderBottom: isActive(path) ? '2px solid var(--primary)' : 'none',
-    paddingBottom: '0.2rem',
-    transition: 'all 0.2s ease'
-  });
+  const linkStyle = (path) => {
+    const active = isActive(path);
+    return {
+      textDecoration: 'none',
+      color: active ? 'var(--primary)' : 'var(--text-muted)',
+      fontWeight: active ? 'bold' : '500',
+      borderBottom: active ? '2px solid var(--primary)' : 'none',
+      paddingBottom: '0.2rem',
+      transition: 'all 0.2s ease',
+      cursor: 'pointer'
+    };
+  };
 
   // Clinical Notification Engine
   useEffect(() => {
@@ -30,55 +36,55 @@ export function Navbar() {
       if (sessionStorage.getItem('notified_care_routine')) return;
 
       const unsub = subscribeToNursePatients(roleData.linkedId, (patients) => {
-         const pending = patients.flatMap(p => 
-           (p.careRoutine || []).filter(r => {
-             const isObj = typeof r === 'object' && r !== null;
-             return isObj ? !r.completed : true; 
-           }).map(r => {
-             const isObj = typeof r === 'object' && r !== null;
-             return { 
-               task: isObj ? r.task : r, 
-               time: (isObj && r.time) ? r.time : 'ASAP', 
-               patientName: p.name 
-             };
-           })
-         );
+        const pending = patients.flatMap(p =>
+          (p.careRoutine || []).filter(r => {
+            const isObj = typeof r === 'object' && r !== null;
+            return isObj ? !r.completed : true;
+          }).map(r => {
+            const isObj = typeof r === 'object' && r !== null;
+            return {
+              task: isObj ? r.task : r,
+              time: (isObj && r.time) ? r.time : 'ASAP',
+              patientName: p.name
+            };
+          })
+        );
 
-         if (pending.length > 0) {
-            const dueTask = pending[0];
-            const timeDisplay = dueTask.time === 'ASAP' ? 'ASAP' : `Clock Time: ${dueTask.time}`;
-            alert(`🏥 Clinical Notification:\nCare Routine Task Due!\n\nPatient: ${dueTask.patientName}\nTask: ${dueTask.task || 'Routine Care'}\nTime: ${timeDisplay}`);
-            sessionStorage.setItem('notified_care_routine', 'true');
-            unsub();
-         }
+        if (pending.length > 0) {
+          const dueTask = pending[0];
+          const timeDisplay = dueTask.time === 'ASAP' ? 'ASAP' : `Clock Time: ${dueTask.time}`;
+          alert(`🏥 Clinical Notification:\nCare Routine Task Due!\n\nPatient: ${dueTask.patientName}\nTask: ${dueTask.task || 'Routine Care'}\nTime: ${timeDisplay}`);
+          sessionStorage.setItem('notified_care_routine', 'true');
+          unsub();
+        }
       });
       return () => unsub();
     }
   }, [roleData]);
 
   return (
-    <header style={{ 
-        padding: '1rem 2rem', 
-        background: '#ffffff', 
-        borderBottom: '1px solid var(--border)', 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        position: 'sticky',
-        top: 0,
-        zIndex: 1000
-      }}>
+    <header style={{
+      padding: '1rem 2rem',
+      background: '#ffffff',
+      borderBottom: '1px solid var(--border)',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      position: 'sticky',
+      top: 0,
+      zIndex: 1000
+    }}>
       <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary)' }}>
         <Link href="/" style={{ textDecoration: 'none', color: 'inherit' }}>⚕️ CareFlow AI+</Link>
       </div>
       <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
         {/* Navigation Logic */}
         {roleData.role === 'doctor' && (
-           <>
-             <Link href="/" style={linkStyle('/')} className="nav-link">Registration</Link>
-             <Link href="/doctor" style={linkStyle('/doctor')} className="nav-link">Doctor Dashboard</Link>
-             <Link href="/inventory" style={linkStyle('/inventory')} className="nav-link">Supply Intelligence</Link>
-           </>
+          <>
+            <Link href="/" style={linkStyle('/')} className="nav-link">Registration</Link>
+            <Link href="/doctor" style={linkStyle('/doctor')} className="nav-link">Doctor Dashboard</Link>
+            <Link href="/inventory" style={linkStyle('/inventory')} className="nav-link">Supply Intelligence</Link>
+          </>
         )}
         {roleData.role !== 'doctor' && (
           <>
