@@ -28,6 +28,7 @@ const canAccess = (role, path) => {
         // Manager sees all routes
         return true;
     }
+    if (!allowed) return false; // Unknown role — deny access
     return allowed.some(p => path === p || path.startsWith(p + '/'));
 };
 
@@ -141,6 +142,8 @@ export const AuthProvider = ({ children }) => {
         } catch (err) {
             console.error('Logout error:', err);
         }
+        // Clear per-session notification flags so alerts re-fire on next login
+        sessionStorage.removeItem('notified_care_routine');
         setUser(null);
         setRoleData(null);
         router.push('/login');
