@@ -23,6 +23,34 @@ export default function PatientProfilePage() {
   const [newRoutineTime, setNewRoutineTime] = useState('')
   const [savingRoutine, setSavingRoutine] = useState(false)
 
+  const [aiAssessment, setAiAssessment] = useState(null)
+  const [loadingAssessment, setLoadingAssessment] = useState(false)
+
+  // Fetch real AI Assessment when the patient data is loaded
+  useEffect(() => {
+    if (!patient || aiAssessment || loadingAssessment) return;
+    
+    const fetchAssessment = async () => {
+      setLoadingAssessment(true);
+      try {
+        const res = await fetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patient),
+        });
+        const data = await res.json();
+        setAiAssessment(data);
+      } catch (err) {
+        console.error("Failed to fetch assessment:", err);
+        setAiAssessment({ summary: 'Failed to generate assessment.', actions: [] });
+      } finally {
+        setLoadingAssessment(false);
+      }
+    };
+    
+    fetchAssessment();
+  }, [patient]);
+
   useEffect(() => {
     if (!id) return;
 
@@ -366,36 +394,37 @@ export default function PatientProfilePage() {
           </section>
 
           <section className="card" style={{ borderLeft: '8px solid var(--primary)' }}>
-             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>🤖 AI Clinical Assessment</h2>
-             <div style={{ color: '#1e293b', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                   <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Assessment Summary</strong>
-                   {patient.riskLevel === 'Critical' || patient.riskLevel === 'High' ? (
-                     <p style={{ margin: 0 }}><strong>Alert:</strong> Patient vitals indicate potential instability. Immediate clinical review of respiratory and circulatory status is advised. Triage assessment suggests high-priority intervention.</p>
-                   ) : (
-                     <p style={{ margin: 0 }}>Patient appears clinically stable based on current monitoring data. Continued observation of trends is recommended as per standard protocols.</p>
-                   )}
-                </div>
+             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>🤖 AI Clinical Assessment <span className="badge badge-low">RAG Enhanced</span></h2>
+             
+             {loadingAssessment ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Generating comprehensive clinical assessment...</div>
+             ) : aiAssessment ? (
+               <div style={{ color: '#1e293b', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                     <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Assessment Summary</strong>
+                     <p style={{ margin: 0 }}>{aiAssessment.summary}</p>
+                  </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                   <div>
-                      <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Clinical Indicators</strong>
-                      <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
-                         <li>Vitals: {patient.vitals?.hr || '--'} BPM / {patient.vitals?.temp || '--'}°C</li>
-                         <li>Symptom Correlation: {patient.symptoms || 'None reported'}</li>
-                         <li>Risk Quotient: {patient.riskLevel}</li>
-                      </ul>
-                   </div>
-                   <div>
-                      <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Recommended Actions</strong>
-                      <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
-                         <li>{patient.riskLevel === 'Critical' ? 'Immediate Physician Referral' : 'Routine Monitoring'}</li>
-                         <li>{patient.assignedWard ? `Transfer to ${patient.assignedWard}` : 'In-place stabilization'}</li>
-                         <li>Maintain care routine</li>
-                      </ul>
-                   </div>
-                </div>
-             </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                     <div>
+                        <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Clinical Indicators</strong>
+                        <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
+                           <li>Vitals: {patient.vitals?.hr || '--'} BPM / {patient.vitals?.temp || '--'}°C</li>
+                           <li>Symptom Correlation: {patient.symptoms || 'None reported'}</li>
+                           <li>Risk Quotient: {patient.riskLevel}</li>
+                        </ul>
+                     </div>
+                     <div>
+                        <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Recommended Actions</strong>
+                        <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
+                           {aiAssessment.actions && aiAssessment.actions.map((action, i) => (
+                             <li key={i}>{action}</li>
+                           ))}
+                        </ul>
+                     </div>
+                  </div>
+               </div>
+             ) : null}
           </section>
 
         </div>

@@ -46,8 +46,8 @@ export async function POST(req) {
     }).join('\n');
 
     if (process.env.GEMINI_API_KEY) {
-      // Using gemini-1.5-flash to ensure consistent free-tier quota (avoiding 429 limit: 0 errors on 2.0)
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // Using gemini-2.5-flash to ensure compatibility with the updated API Key
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
         You are a Hospital Flow Optimization AI for Malaysia. 

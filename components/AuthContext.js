@@ -8,17 +8,17 @@ const AuthContext = createContext({});
 // Role-permission map
 const ROLE_ROUTES = {
     registration_staff: ['/'],
-    nurse:              ['/', '/dashboard', '/inventory', '/patient'],
-    doctor:             ['/', '/doctor', '/patient', '/inventory'],
-    manager:            null, // null = all routes
+    nurse: ['/', '/dashboard', '/inventory', '/patient'],
+    doctor: ['/', '/doctor', '/inventory', '/patient'],
+    manager: null, // null = all routes
 };
 
 // Default redirect after login per role
 const ROLE_HOME = {
     registration_staff: '/',
-    nurse:              '/dashboard',
-    doctor:             '/doctor',
-    manager:            '/manager',
+    nurse: '/dashboard',
+    doctor: '/doctor',
+    manager: '/manager',
 };
 
 const canAccess = (role, path) => {
@@ -26,21 +26,21 @@ const canAccess = (role, path) => {
     const allowed = ROLE_ROUTES[role];
     if (allowed === null) {
         // Manager sees all routes
-        return true; 
+        return true;
     }
     return allowed.some(p => path === p || path.startsWith(p + '/'));
 };
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser]         = useState(null);
+    const [user, setUser] = useState(null);
     const [roleData, setRoleData] = useState(null);
-    const [loading, setLoading]   = useState(true);
-    const router   = useRouter();
+    const [loading, setLoading] = useState(true);
+    const router = useRouter();
     const pathname = usePathname();
 
     useEffect(() => {
         // Dynamically import to avoid SSR issues
-        let unsubscribe = () => {};
+        let unsubscribe = () => { };
 
         (async () => {
             try {
@@ -66,19 +66,19 @@ export const AuthProvider = ({ children }) => {
 
                             if (!snap.empty) {
                                 const data = snap.docs[0].data();
-                                role       = data.role || 'registration_staff';
-                                linkedId   = data.linkedId || (role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null);
+                                role = data.role || 'registration_staff';
+                                linkedId = data.linkedId || (role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null);
                                 department = data.department || 'General';
-                                name       = data.name || firebaseUser.email.split('@')[0];
+                                name = data.name || firebaseUser.email.split('@')[0];
                             } else {
                                 // Fallback role derivation from email for demo
-                                role       = firebaseUser.email.includes('manager') ? 'manager'
-                                           : firebaseUser.email.includes('nurse')   ? 'nurse'
-                                           : firebaseUser.email.includes('doctor')  ? 'doctor'
-                                           : 'registration_staff';
-                                linkedId   = role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null;
+                                role = firebaseUser.email.includes('manager') ? 'manager'
+                                    : firebaseUser.email.includes('nurse') ? 'nurse'
+                                        : firebaseUser.email.includes('doctor') ? 'doctor'
+                                            : 'registration_staff';
+                                linkedId = role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null;
                                 department = 'General';
-                                name       = firebaseUser.email.split('@')[0];
+                                name = firebaseUser.email.split('@')[0];
                             }
 
                             setRoleData({ role, linkedId, department, name });
