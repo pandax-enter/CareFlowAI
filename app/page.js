@@ -72,6 +72,14 @@ export default function TriagePage() {
     setRoutingResult(null);
     
     try {
+      // 0. Check for existing patient to prevent duplicates
+      const existing = await getPatientByIC(formData.icNumber);
+      if (existing) {
+        setExistingPatientId(existing.id);
+      } else {
+        setExistingPatientId(null);
+      }
+
       // 1. Run AI Triage
       const triageRes = await fetch('/api/triage', {
         method: 'POST',

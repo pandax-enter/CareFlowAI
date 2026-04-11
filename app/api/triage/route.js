@@ -19,7 +19,7 @@ export async function POST(req) {
       });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     const prompt = `
       You are a clinical triage AI assistant for Malaysia's public healthcare system.
@@ -60,9 +60,12 @@ export async function POST(req) {
   } catch (error) {
     console.error('Gemini API error in /api/triage:', error);
     return NextResponse.json({
-      riskLevel: 'critical',
-      recommendedAction: 'Seek medical attention immediately',
+      riskLevel: 'Critical',
+      urgencyLevel: 'Emergency',
+      requiredSpecialty: 'General Medicine',
+      destination: 'Emergency',
+      recommendedAction: 'Seek medical attention immediately - SYSTEM FALLBACK',
       explanation: 'An error occurred during AI analysis. Please proceed with standard clinical judgment.'
-    }, { status: 500 });
+    }, { status: 200 }); // Return 200 with fallback data to prevent DB crash
   }
 }

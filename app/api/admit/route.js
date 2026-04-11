@@ -24,14 +24,14 @@ export async function POST(req) {
     // 3. Save Patient
     const fullPatientRecord = {
       ...patientInfo,
-      riskLevel: assessment.riskLevel,
-      urgencyLevel: assessment.urgencyLevel,
-      requiredSpecialty: assessment.requiredSpecialty,
-      assignedWard: assessment.destination,
-      assignedNurseId: nurse.id,
-      assignedDoctorId: doctor.id,
+      riskLevel: assessment.riskLevel || 'Medium',
+      urgencyLevel: assessment.urgencyLevel || 'Standard',
+      requiredSpecialty: assessment.requiredSpecialty || 'General',
+      assignedWard: assessment.destination || 'Normal Ward',
+      assignedNurseId: nurse.id || null,
+      assignedDoctorId: doctor.id || null,
       status: (assessment.destination === 'Emergency' || assessment.destination === 'ICU') ? 'Admitted' : 'Waiting',
-      alerts: [assessment.recommendedAction],
+      alerts: assessment.recommendedAction ? [assessment.recommendedAction] : [],
       timestamp: new Date().toISOString()
     };
 

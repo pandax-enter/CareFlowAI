@@ -66,8 +66,19 @@ export const AuthProvider = ({ children }) => {
 
                             if (!snap.empty) {
                                 const data = snap.docs[0].data();
-                                role = data.role || 'registration_staff';
-                                linkedId = data.linkedId || (role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null);
+                                
+                                // Robust extraction for case where fields might be DocumentRefs
+                                const extractId = (val) => {
+                                    if (typeof val === 'string') return val;
+                                    if (val && typeof val === 'object' && val.id) return val.id;
+                                    if (val && typeof val === 'object' && val.path) return val.path.split('/').pop();
+                                    // Handle the specific format seen in inspection
+                                    if (val && val.referencePath) return val.referencePath.split('/').pop();
+                                    return val;
+                                };
+
+                                role = extractId(data.role) || 'registration_staff';
+                                linkedId = extractId(data.linkedId) || (role === 'nurse' ? 'N001' : role === 'doctor' ? 'D001' : null);
                                 department = data.department || 'General';
                                 name = data.name || firebaseUser.email.split('@')[0];
                             } else {
