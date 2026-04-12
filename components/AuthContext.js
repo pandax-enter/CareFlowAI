@@ -7,7 +7,7 @@ const AuthContext = createContext({});
 
 // Role-permission map
 const ROLE_ROUTES = {
-    registration_staff: ['/'],
+    registration: ['/'],
     nurse: ['/', '/dashboard', '/inventory', '/patient'],
     doctor: ['/', '/doctor', '/inventory', '/patient'],
     manager: null, // null = all routes
@@ -15,7 +15,7 @@ const ROLE_ROUTES = {
 
 // Default redirect after login per role
 const ROLE_HOME = {
-    registration_staff: '/',
+    registration: '/',
     nurse: '/dashboard',
     doctor: '/doctor',
     manager: '/manager',

@@ -122,23 +122,49 @@ export default function PatientProfilePage() {
   
   const doctor = mockDoctors.find(d => d.id === (patient.assignedDoctorId || patient.assignedDoctor));
 
+  // Fallback for real Firebase doctors whose IDs don't match mockDoctors (e.g. Firestore auto-IDs)
+  // Constructs a virtual doctor entry so the scheduling panel always renders for admitted patients
+  const DAILY_SLOTS = ['08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM'];
+  const effectiveDoctor = doctor || (patient.assignedDoctorId ? {
+    id: patient.assignedDoctorId,
+    name: patient.assignedDoctorName || `Assigned Doctor (${patient.assignedDoctorId})`,
+    specialty: patient.requiredSpecialty || 'General',
+    availableSlots: DAILY_SLOTS
+  } : null);
+
+  // Helper: convert slot string like '09:00 AM' to sortable minutes
+  const slotToMinutes = (slot) => {
+    if (!slot || slot === 'Immediate') return -1;
+    const match = slot.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return 9999;
+    let h = parseInt(match[1]), m = parseInt(match[2]);
+    const period = match[3].toUpperCase();
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
   const autoSchedule = async () => {
-    if (!doctor) return;
-    setScheduling(true)
+    if (!effectiveDoctor) return;
+    setScheduling(true);
     try {
-      // Find first available slot that isn't booked
-      const available = doctor.availableSlots?.find(slot => !bookedSlots.includes(slot));
-      
+      // Sort slots chronologically so AI always books the earliest available
+      const sortedSlots = [...(effectiveDoctor.availableSlots || [])]
+        .sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
+
+      // Find first slot not already booked for this doctor across all patients
+      const available = sortedSlots.find(slot => !bookedSlots.includes(slot));
+
       if (available) {
-        await addConsultationSchedule(id, doctor.id, available, "AI-Calculated Priority Consultation");
+        await addConsultationSchedule(id, effectiveDoctor.id, available, 'AI-Calculated Priority Consultation');
         setScheduledSlot(available);
       } else {
-        alert("No available slots found for this doctor today.");
+        alert('No available slots found for this doctor today.');
       }
     } catch (err) {
       alert(err.message);
     } finally {
-      setScheduling(false)
+      setScheduling(false);
     }
   }
 
@@ -146,7 +172,7 @@ export default function PatientProfilePage() {
     if (bookedSlots.includes(slot)) return;
     setScheduling(true);
     try {
-      await addConsultationSchedule(id, doctor.id, slot, "Manual Nurse/Doctor Override");
+      await addConsultationSchedule(id, effectiveDoctor.id, slot, 'Manual Nurse/Doctor Override');
       setScheduledSlot(slot);
     } catch (err) {
       alert(err.message);
@@ -197,7 +223,7 @@ export default function PatientProfilePage() {
             )}
             {lowStockItems.length > 0 && (
               <div style={{ padding: '0.75rem', background: '#fee2e2', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                <strong style={{ color: '#b91c1c', display: 'block', marginBottom: '0.25rem' }}>Inventory Alert</strong>
+                <strong style={{ color: '#b91c1c', display: 'block', marginBottom: '0.25rem' }}>Patient's Inventory Alert</strong>
                 <p style={{ fontSize: '0.85rem', color: '#dc2626', margin: 0 }}>
                   Low stock: {lowStockItems.map(i => i.item).join(', ')}. Replenishment required.
                 </p>
@@ -329,13 +355,13 @@ export default function PatientProfilePage() {
         {/* Right Column: Vitals Trend & AI Observations */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-          {doctor && (
+          {effectiveDoctor && (
           <section className="card">
             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Consultation Scheduling</h2>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
-                 <strong>{doctor.name}</strong>
-                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Specialty: {doctor.specialty}</div>
+                 <strong>{effectiveDoctor.name}</strong>
+                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Specialty: {effectiveDoctor.specialty}</div>
               </div>
               <button onClick={autoSchedule} disabled={scheduling} className="btn btn-primary" style={{ fontSize: '0.8rem' }}>
                  {scheduling ? 'Computing...' : 'AI Auto-Schedule'}
@@ -343,7 +369,9 @@ export default function PatientProfilePage() {
             </div>
             
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-               {doctor.availableSlots?.map(slot => {
+               {[...(effectiveDoctor.availableSlots || [])]
+                 .sort((a, b) => slotToMinutes(a) - slotToMinutes(b))
+                 .map(slot => {
                    const isBooked = bookedSlots.includes(slot);
                    const isSelected = scheduledSlot === slot || patient.scheduledConsultation === slot;
                    return (

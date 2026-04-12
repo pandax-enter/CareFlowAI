@@ -7,7 +7,7 @@ async function checkModels() {
     console.log("Fetching available models...");
     try {
         // We will just try a few known ones
-        const modelsToTest = ["gemini-2.0-flash-lite-preview-02-05"];
+        const modelsToTest = ["gemini-2.5-flash-lite-preview-02-05"];
         for(const m of modelsToTest) {
             try {
                 const model = genAI.getGenerativeModel({ model: m });

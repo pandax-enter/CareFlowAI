@@ -69,6 +69,7 @@ export function Navbar() {
 
   useEffect(() => {
     if (!roleData || !roleData.linkedId) return;
+    if (roleData.role === 'manager') return; // Managers are observers; suppress clinical alerts
 
     const assignAlert = (patients) => {
        const currentIds = new Set(patients.map(p => p.id));

@@ -122,42 +122,80 @@ export default function DoctorDashboard() {
         
         {/* Patient Schedule List */}
         <section className="card">
-          <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Today's Consultations</h2>
+        <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1.5rem' }}>Today's Consultations</h2>
           {patients.length === 0 ? (
             <p style={{ color: 'var(--text-muted)' }}>No patients scheduled for today.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {patients.map(patient => (
-                <div 
-                  key={patient.id} 
-                  className="card" 
-                  style={{ 
-                    cursor: 'pointer', 
-                    padding: '1rem', 
-                    border: selectedPatient?.id === patient.id ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    background: selectedPatient?.id === patient.id ? '#eff6ff' : 'white'
-                  }}
-                  onClick={() => setSelectedPatient(patient)}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 'bold' }}>{patient.name}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Age: {patient.age} | Risk: {patient.riskLevel}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+              {[...patients]
+                .sort((a, b) => {
+                  // Convert "HH:MM AM/PM" to minutes since midnight for correct AM/PM ordering
+                  const toMins = (slot) => {
+                    if (!slot) return 9999;
+                    const m = slot.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                    if (!m) return 9999;
+                    let h = parseInt(m[1]), min = parseInt(m[2]);
+                    const pm = m[3].toUpperCase() === 'PM';
+                    if (pm && h !== 12) h += 12;
+                    if (!pm && h === 12) h = 0;
+                    return h * 60 + min;
+                  };
+                  return toMins(a.scheduledConsultation) - toMins(b.scheduledConsultation);
+                })
+                .map((patient, idx, arr) => (
+                <div key={patient.id} style={{ display: 'flex', gap: '0.75rem' }}>
+                  {/* Timeline column - plain minimalist time */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '52px', flexShrink: 0 }}>
+                    <div style={{ textAlign: 'center', padding: '4px 0' }}>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '1px' }}>Time</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                        {patient.scheduledConsultation || '—'}
+                      </div>
                     </div>
-                    <span className={`badge badge-${patient.urgencyLevel?.toLowerCase() || 'standard'}`}>{patient.urgencyLevel}</span>
+                    {idx < arr.length - 1 && (
+                      <div style={{ width: '1px', flex: 1, minHeight: '12px', background: 'var(--border)', margin: '2px 0' }} />
+                    )}
                   </div>
-                  <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
-                    <Link href={`/patient/${patient.id}`} style={{ color: 'var(--primary)', fontWeight: '600' }}>View Full Profile</Link>
-                    <select
-                         className="btn"
-                         style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', border: '1px solid var(--border)' }}
-                         onChange={(e) => handlePatientAction(patient.id, e.target.value)}
-                         value=""
-                       >
-                         <option value="" disabled>Action</option>
-                         <option value="Discharge">Discharge</option>
-                         <option value="Transfer">Transfer</option>
-                    </select>
+
+                  {/* Patient card */}
+                  <div
+                    className="card"
+                    style={{
+                      flex: 1, cursor: 'pointer', padding: '0.85rem', marginBottom: '0.75rem',
+                      border: selectedPatient?.id === patient.id ? '2px solid var(--primary)' : '1px solid var(--border)',
+                      background: selectedPatient?.id === patient.id ? '#eff6ff' : 'white'
+                    }}
+                    onClick={() => setSelectedPatient(patient)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 'bold' }}>{patient.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Age: {patient.age} | Risk: {patient.riskLevel} | {patient.requiredSpecialty || 'General'}</div>
+                      </div>
+                      <span className={`badge badge-${patient.urgencyLevel?.toLowerCase() || 'standard'}`}>{patient.urgencyLevel}</span>
+                    </div>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
+                      <Link
+                        href={`/patient/${patient.id}`}
+                        style={{ color: 'var(--primary)', fontWeight: '600' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >View Full Profile</Link>
+                      <select
+                            className="btn"
+                            style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', border: '1px solid var(--border)' }}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedPatient(null);
+                              handlePatientAction(patient.id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            value=""
+                          >
+                            <option value="" disabled>Action</option>
+                            <option value="Discharge">Discharge</option>
+                            <option value="Transfer">Transfer</option>
+                       </select>
+                    </div>
                   </div>
                 </div>
               ))}

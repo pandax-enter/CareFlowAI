@@ -12,9 +12,12 @@ export async function POST(req) {
     
     let isPhysicallyAdmittable = true;
     if (hospital) {
-      const dest = assessment.destination; // ICU | Normal Ward
+      const dest = assessment.destination; // ICU | Normal Ward | Emergency
       const util = dest === 'ICU' ? hospital.util_icu : hospital.util_nonicu;
-      if (util >= 95) isPhysicallyAdmittable = false;
+      const isCriticalAdmission = assessment.urgencyLevel === 'Critical' || dest === 'Emergency';
+      // Critical/Emergency patients are always admitted (emergency departments never turn away critical cases)
+      // Only flag capacity issue for standard admissions at 95%+
+      if (!isCriticalAdmission && util >= 95) isPhysicallyAdmittable = false;
     }
 
     // 2. Assign Scope
