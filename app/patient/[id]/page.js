@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { mockDoctors } from '@/lib/mockData'
-import { db } from '@/lib/firebase'
+import { db, addConsultationSchedule, subscribeToBookedSlots } from '@/lib/firebase'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
@@ -17,6 +17,39 @@ export default function PatientProfilePage() {
   const [scheduledSlot, setScheduledSlot] = useState(null)
   const [scheduling, setScheduling] = useState(false)
   const [checkedRoutines, setCheckedRoutines] = useState({})
+  const [bookedSlots, setBookedSlots] = useState([])
+  
+  const [newRoutineTask, setNewRoutineTask] = useState('')
+  const [newRoutineTime, setNewRoutineTime] = useState('')
+  const [savingRoutine, setSavingRoutine] = useState(false)
+
+  const [aiAssessment, setAiAssessment] = useState(null)
+  const [loadingAssessment, setLoadingAssessment] = useState(false)
+
+  // Fetch real AI Assessment when the patient data is loaded
+  useEffect(() => {
+    if (!patient || aiAssessment || loadingAssessment) return;
+    
+    const fetchAssessment = async () => {
+      setLoadingAssessment(true);
+      try {
+        const res = await fetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patient),
+        });
+        const data = await res.json();
+        setAiAssessment(data);
+      } catch (err) {
+        console.error("Failed to fetch assessment:", err);
+        setAiAssessment({ summary: 'Failed to generate assessment.', actions: [] });
+      } finally {
+        setLoadingAssessment(false);
+      }
+    };
+    
+    fetchAssessment();
+  }, [patient]);
 
   useEffect(() => {
     if (!id) return;
@@ -39,14 +72,48 @@ export default function PatientProfilePage() {
     return () => unsubscribe();
   }, [id]);
 
+  useEffect(() => {
+    if (!patient?.assignedDoctorId) return;
+    const unsub = subscribeToBookedSlots(patient.assignedDoctorId, (slots) => {
+      setBookedSlots(slots);
+    });
+    return () => unsub();
+  }, [patient?.assignedDoctorId]);
+
   if (loading) return <div className="container"><p>Loading patient profile...</p></div>
   if (!patient) return <div className="container"><p>Patient not found.</p></div>
 
-  const toggleRoutine = (index) => {
-    setCheckedRoutines(prev => ({
-      ...prev,
-      [index]: !prev[index]
-    }))
+  const toggleRoutine = async (index) => {
+    const updated = [...(patient.careRoutine || [])];
+    const item = updated[index];
+    
+    // Support both string (legacy) and object schema
+    if (typeof item === 'string') {
+        updated[index] = { task: item, time: '', completed: true };
+    } else {
+        updated[index] = { ...item, completed: !item.completed };
+    }
+    
+    try {
+        await updatePatientRecord(id, { careRoutine: updated });
+    } catch (err) {
+        alert("Failed to update routine status.");
+    }
+  }
+
+  const handleAddRoutine = async () => {
+    if (!newRoutineTask) return;
+    setSavingRoutine(true);
+    const updated = [...(patient.careRoutine || []), { task: newRoutineTask, time: newRoutineTime, completed: false }];
+    try {
+        await updatePatientRecord(id, { careRoutine: updated });
+        setNewRoutineTask('');
+        setNewRoutineTime('');
+    } catch (err) {
+        alert("Failed to add routine.");
+    } finally {
+        setSavingRoutine(false);
+    }
   }
 
   // Calculate Alerts
@@ -55,14 +122,63 @@ export default function PatientProfilePage() {
   
   const doctor = mockDoctors.find(d => d.id === (patient.assignedDoctorId || patient.assignedDoctor));
 
-  const autoSchedule = () => {
-    setScheduling(true)
-    setTimeout(() => {
-      if (doctor && doctor.availableSlots?.length > 0) {
-        setScheduledSlot(patient.urgencyLevel === 'Critical' ? doctor.availableSlots[0] : doctor.availableSlots[doctor.availableSlots.length - 1])
+  // Fallback for real Firebase doctors whose IDs don't match mockDoctors (e.g. Firestore auto-IDs)
+  // Constructs a virtual doctor entry so the scheduling panel always renders for admitted patients
+  const DAILY_SLOTS = ['08:30 AM', '09:00 AM', '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM', '11:30 AM', '02:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM'];
+  const effectiveDoctor = doctor || (patient.assignedDoctorId ? {
+    id: patient.assignedDoctorId,
+    name: patient.assignedDoctorName || `Assigned Doctor (${patient.assignedDoctorId})`,
+    specialty: patient.requiredSpecialty || 'General',
+    availableSlots: DAILY_SLOTS
+  } : null);
+
+  // Helper: convert slot string like '09:00 AM' to sortable minutes
+  const slotToMinutes = (slot) => {
+    if (!slot || slot === 'Immediate') return -1;
+    const match = slot.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (!match) return 9999;
+    let h = parseInt(match[1]), m = parseInt(match[2]);
+    const period = match[3].toUpperCase();
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60 + m;
+  };
+
+  const autoSchedule = async () => {
+    if (!effectiveDoctor) return;
+    setScheduling(true);
+    try {
+      // Sort slots chronologically so AI always books the earliest available
+      const sortedSlots = [...(effectiveDoctor.availableSlots || [])]
+        .sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
+
+      // Find first slot not already booked for this doctor across all patients
+      const available = sortedSlots.find(slot => !bookedSlots.includes(slot));
+
+      if (available) {
+        await addConsultationSchedule(id, effectiveDoctor.id, available, 'AI-Calculated Priority Consultation');
+        setScheduledSlot(available);
+      } else {
+        alert('No available slots found for this doctor today.');
       }
-      setScheduling(false)
-    }, 1000)
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  const handleManualSchedule = async (slot) => {
+    if (bookedSlots.includes(slot)) return;
+    setScheduling(true);
+    try {
+      await addConsultationSchedule(id, effectiveDoctor.id, slot, 'Manual Nurse/Doctor Override');
+      setScheduledSlot(slot);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setScheduling(false);
+    }
   }
 
   const getStatusColor = (type, value) => {
@@ -107,7 +223,7 @@ export default function PatientProfilePage() {
             )}
             {lowStockItems.length > 0 && (
               <div style={{ padding: '0.75rem', background: '#fee2e2', borderRadius: '6px', border: '1px solid #fecaca' }}>
-                <strong style={{ color: '#b91c1c', display: 'block', marginBottom: '0.25rem' }}>Inventory Alert</strong>
+                <strong style={{ color: '#b91c1c', display: 'block', marginBottom: '0.25rem' }}>Patient's Inventory Alert</strong>
                 <p style={{ fontSize: '0.85rem', color: '#dc2626', margin: 0 }}>
                   Low stock: {lowStockItems.map(i => i.item).join(', ')}. Replenishment required.
                 </p>
@@ -183,40 +299,69 @@ export default function PatientProfilePage() {
             </section>
           )}
 
-          <section className="card">
-            <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Daily Care Routine</h2>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="Task (e.g. Meds)" 
+                  value={newRoutineTask} 
+                  onChange={e => setNewRoutineTask(e.target.value)}
+                  style={{ flex: 2, padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)' }}
+                />
+                <input 
+                  type="time" 
+                  value={newRoutineTime} 
+                  onChange={e => setNewRoutineTime(e.target.value)}
+                  style={{ flex: 1, padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border)' }}
+                />
+                <button 
+                  onClick={handleAddRoutine} 
+                  disabled={savingRoutine || !newRoutineTask}
+                  className="btn btn-primary"
+                  style={{ padding: '0.6rem 1rem' }}
+                >
+                  {savingRoutine ? '...' : 'Add'}
+                </button>
+            </div>
+
             {patient.careRoutine?.length > 0 ? (
               <ul style={{ listStyleType: 'none', padding: 0 }}>
-                {patient.careRoutine.map((routine, i) => (
-                  <li key={i} style={{ padding: '0.75rem', background: checkedRoutines[i] ? '#f1f5f9' : 'var(--white)', border: '1px solid var(--border)', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={!!checkedRoutines[i]} 
-                      onChange={() => toggleRoutine(i)} 
-                    />
-                    <span style={{ textDecoration: checkedRoutines[i] ? 'line-through' : 'none', color: checkedRoutines[i] ? 'var(--text-muted)' : 'inherit' }}>
-                      {routine}
-                    </span>
-                  </li>
-                ))}
+                {patient.careRoutine.map((routine, i) => {
+                  const isObj = typeof routine === 'object' && routine !== null;
+                  const task = isObj ? routine.task : routine;
+                  const time = isObj ? routine.time : '';
+                  const completed = isObj ? routine.completed : !!checkedRoutines[i];
+
+                  return (
+                    <li key={i} style={{ padding: '0.75rem', background: completed ? '#f1f5f9' : 'var(--white)', border: '1px solid var(--border)', borderRadius: '4px', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={completed} 
+                        onChange={() => toggleRoutine(i)} 
+                      />
+                      <div style={{ flex: 1, textDecoration: completed ? 'line-through' : 'none', color: completed ? 'var(--text-muted)' : 'inherit' }}>
+                        <div>{task}</div>
+                        {time && <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 'bold' }}>🕒 {time}</div>}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
                 <p style={{ color: 'var(--text-muted)' }}>No active routines.</p>
             )}
-          </section>
 
         </div>
 
         {/* Right Column: Vitals Trend & AI Observations */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-          {doctor && (
+          {effectiveDoctor && (
           <section className="card">
             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Consultation Scheduling</h2>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <div>
-                 <strong>{doctor.name}</strong>
-                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Specialty: {doctor.specialty}</div>
+                 <strong>{effectiveDoctor.name}</strong>
+                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Specialty: {effectiveDoctor.specialty}</div>
               </div>
               <button onClick={autoSchedule} disabled={scheduling} className="btn btn-primary" style={{ fontSize: '0.8rem' }}>
                  {scheduling ? 'Computing...' : 'AI Auto-Schedule'}
@@ -224,23 +369,35 @@ export default function PatientProfilePage() {
             </div>
             
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-               {doctor.availableSlots?.map(slot => (
-                   <div key={slot} style={{ 
-                       padding: '0.5rem 1rem', 
-                       borderRadius: '20px', 
-                       fontSize: '0.85rem',
-                       border: scheduledSlot === slot ? '2px solid var(--primary)' : '1px solid var(--border)',
-                       background: scheduledSlot === slot ? '#eff6ff' : '#f8fafc',
-                       color: scheduledSlot === slot ? 'var(--primary)' : 'inherit',
-                       fontWeight: scheduledSlot === slot ? 'bold' : 'normal'
-                   }}>
-                     {slot}
-                   </div>
-               ))}
+               {[...(effectiveDoctor.availableSlots || [])]
+                 .sort((a, b) => slotToMinutes(a) - slotToMinutes(b))
+                 .map(slot => {
+                   const isBooked = bookedSlots.includes(slot);
+                   const isSelected = scheduledSlot === slot || patient.scheduledConsultation === slot;
+                   return (
+                    <button 
+                      key={slot} 
+                      disabled={isBooked || scheduling}
+                      onClick={() => handleManualSchedule(slot)}
+                      style={{ 
+                          padding: '0.5rem 1rem', 
+                          borderRadius: '20px', 
+                          fontSize: '0.85rem',
+                          border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
+                          background: isSelected ? '#eff6ff' : isBooked ? '#f1f5f9' : '#f8fafc',
+                          color: isSelected ? 'var(--primary)' : isBooked ? '#94a3b8' : 'inherit',
+                          fontWeight: isSelected ? 'bold' : 'normal',
+                          cursor: isBooked ? 'not-allowed' : 'pointer',
+                          opacity: isBooked ? 0.6 : 1
+                      }}>
+                        {slot} {isBooked ? '(Booked)' : ''}
+                    </button>
+                   );
+               })}
             </div>
-            {scheduledSlot && (
+            {(scheduledSlot || patient.scheduledConsultation) && (
                 <div style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--success)', background: '#f0fdf4', padding: '0.5rem', borderRadius: '4px' }}>
-                    ✓ Consultation confirmed & reminder generated for {scheduledSlot}.
+                    ✓ Consultation confirmed & recorded for {scheduledSlot || patient.scheduledConsultation}.
                 </div>
             )}
           </section>
@@ -265,14 +422,37 @@ export default function PatientProfilePage() {
           </section>
 
           <section className="card" style={{ borderLeft: '8px solid var(--primary)' }}>
-             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>AI Clinical Summary</h2>
-             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                {patient.vitals?.hr ? `Heart rate is currently ${patient.vitals.hr} BPM.` : 'No vital data recorded.'}
-                {patient.vitals?.temp ? ` Temperature is ${patient.vitals.temp}°C.` : ''}
-                {patient.symptoms && ` Patient reported symptoms: ${patient.symptoms}.`}
-                <br /><br />
-                <strong>Clinical Notes:</strong> No immediate intervention suggested. Maintain scheduled care routines.
-             </p>
+             <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>🤖 AI Clinical Assessment <span className="badge badge-low">RAG Enhanced</span></h2>
+             
+             {loadingAssessment ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Generating comprehensive clinical assessment...</div>
+             ) : aiAssessment ? (
+               <div style={{ color: '#1e293b', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                     <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Assessment Summary</strong>
+                     <p style={{ margin: 0 }}>{aiAssessment.summary}</p>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                     <div>
+                        <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Clinical Indicators</strong>
+                        <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
+                           <li>Vitals: {patient.vitals?.hr || '--'} BPM / {patient.vitals?.temp || '--'}°C</li>
+                           <li>Symptom Correlation: {patient.symptoms || 'None reported'}</li>
+                           <li>Risk Quotient: {patient.riskLevel}</li>
+                        </ul>
+                     </div>
+                     <div>
+                        <strong style={{ display: 'block', color: 'var(--primary)', textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '0.4rem' }}>Recommended Actions</strong>
+                        <ul style={{ paddingLeft: '1.2rem', margin: 0, fontSize: '0.85rem' }}>
+                           {aiAssessment.actions && aiAssessment.actions.map((action, i) => (
+                             <li key={i}>{action}</li>
+                           ))}
+                        </ul>
+                     </div>
+                  </div>
+               </div>
+             ) : null}
           </section>
 
         </div>

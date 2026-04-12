@@ -4,12 +4,33 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/AuthContext'
 import { getPatientByIC } from '@/lib/firebase'
 
+// All Malaysian public hospitals from bedutil_facility.csv, grouped by state.
+// Names match exactly so the routing API can look them up in the RAG dataset.
+const MALAYSIA_HOSPITALS = [
+  { state: 'Johor', hospitals: ['Hospital Sultan Ismail Johor Bahru', 'Hospital Sultanah Aminah', 'Hospital Pakar Sultanah Fatimah', 'Hospital Enche\' Besar Hajjah Khalsom', 'Hospital Mersing', 'Hospital Pontian', 'Hospital Segamat'] },
+  { state: 'Kedah', hospitals: ['Hospital Sultanah Bahiyah', 'Hospital Sultan Abdul Halim', 'Hospital Kulim', 'Hospital Jitra', 'Hospital Sultanah Maliha', 'Hospital Kuala Nerang', 'Hospital Sik', 'Hospital Yan', 'Hospital Pendang'] },
+  { state: 'Kelantan', hospitals: ['Hospital Raja Perempuan Zainab II', 'Hospital Pasir Mas', 'Hospital Tanah Merah', 'Hospital Tumpat', 'Hospital Tengku Anis', 'Hospital Gua Musang', 'Hospital Jeli', 'Hospital Universiti Sains Malaysia'] },
+  { state: 'Melaka', hospitals: ['Hospital Melaka', 'Hospital Alor Gajah', 'Hospital Jasin'] },
+  { state: 'Negeri Sembilan', hospitals: ['Hospital Tuanku Ja\'afar', 'Hospital Tuanku Ampuan Najihah', 'Hospital Rembau', 'Hospital Tampin'] },
+  { state: 'Pahang', hospitals: ['Hospital Tengku Ampuan Afzan', 'Hospital Pekan', 'Hospital Kuala Lipis', 'Hospital Jerantut', 'Hospital Muadzam Shah', 'Hospital Jengka', 'Hospital Bera', 'Hospital Sultanah Hajjah Kalsom'] },
+  { state: 'Perak', hospitals: ['Hospital  Raja Permaisuri Bainun', 'Hospital Taiping', 'Hospital Teluk Intan', 'Hospital Seri Manjung', 'Hospital Slim River', 'Hospital Batu Gajah', 'Hospital Kuala Kangsar', 'Hospital Gerik', 'Hospital Kampar', 'Hospital Changkat Melintang', 'Hospital Selama', 'Hospital Sungai Siput', 'Hospital Parit Buntar'] },
+  { state: 'Perlis', hospitals: ['Hospital Tuanku Fauziah'] },
+  { state: 'Pulau Pinang', hospitals: ['Hospital Pulau Pinang', 'Hospital Bukit Mertajam', 'Hospital Sungai Bakap'] },
+  { state: 'Sabah', hospitals: ['Hospital Queen Elizabeth', 'Hospital Queen Elizabeth II', 'Hospital Keningau', 'Hospital Kota Marudu', 'Hospital Semporna', 'Hospital Sipitang', 'Hospital Tambunan', 'Hospital Tuaran', 'Hospital Kunak', 'Hospital Papar', 'Hospital Wanita Dan Kanak-Kanak', 'Hospital Kuala Penyu'] },
+  { state: 'Sarawak', hospitals: ['Hospital Umum Sarawak', 'Hospital Miri', 'Hospital Sibu', 'Hospital Bintulu', 'Hospital Kapit', 'Hospital Limbang', 'Hospital Lawas', 'Hospital Sri Aman', 'Hospital Saratok', 'Hospital Sarikei', 'Hospital Serian', 'Hospital Lundu', 'Hospital Dalat', 'Hospital Daro', 'Hospital Betong', 'Hospital Simunjan', 'Hospital Marudi', 'Hospital Sentosa', 'Pusat Jantung Sarawak'] },
+  { state: 'Selangor', hospitals: ['Hospital Sungai Buloh', 'Hospital Selayang', 'Hospital Ampang', 'Hospital Kajang', 'Hospital Shah Alam', 'Pusat Kawalan Kusta Negara'] },
+  { state: 'Terengganu', hospitals: ['Hospital Sultanah Nur Zahirah', 'Hospital Kemaman', 'Hospital Dungun', 'Hospital Hulu Terengganu', 'Hospital Setiu'] },
+  { state: 'W.P. Kuala Lumpur', hospitals: ['Hospital Kuala Lumpur', 'Hospital Tunku Azizah', 'Institut Perubatan Respiratori'] },
+  { state: 'W.P. Labuan', hospitals: ['Hospital Labuan'] },
+  { state: 'W.P. Putrajaya', hospitals: ['Hospital Putrajaya', 'Institut Kanser Negara'] },
+];
+
 export default function TriagePage() {
   const { roleData } = useAuth();
-  
+
   // flowState: 'initial' | 'mydigitalid_processing' | 'form'
   const [flowState, setFlowState] = useState('initial');
-  
+
   const [formData, setFormData] = useState({
     name: '',
     icNumber: '',
@@ -19,20 +40,20 @@ export default function TriagePage() {
     temp: '',
     hospitalPref: 'Hospital Sultan Ismail Johor Bahru'
   })
-  
+
   const [isVerified, setIsVerified] = useState(false);
   const [existingPatientId, setExistingPatientId] = useState(null);
 
   const [result, setResult] = useState(null)
   const [routingResult, setRoutingResult] = useState(null)
-  
+
   const [loading, setLoading] = useState(false)
   const [admitLoading, setAdmitLoading] = useState(false)
   const [admitSuccess, setAdmitSuccess] = useState(null)
 
   const handleMyDigitalID = () => {
     setFlowState('mydigitalid_processing');
-    
+
     // Simulate Identity Provider Delay
     setTimeout(async () => {
       const mockIdentity = {
@@ -70,8 +91,16 @@ export default function TriagePage() {
     setLoading(true);
     setResult(null);
     setRoutingResult(null);
-    
+
     try {
+      // 0. Check for existing patient to prevent duplicates
+      const existing = await getPatientByIC(formData.icNumber);
+      if (existing) {
+        setExistingPatientId(existing.id);
+      } else {
+        setExistingPatientId(null);
+      }
+
       // 1. Run AI Triage
       const triageRes = await fetch('/api/triage', {
         method: 'POST',
@@ -91,12 +120,19 @@ export default function TriagePage() {
         const routeData = await routeRes.json();
         setRoutingResult(routeData);
       } else {
-          setRoutingResult({ isRoutingNeeded: false, recommendedHospital: formData.hospitalPref, reason: "Patient is low risk." });
+        setRoutingResult({ isRoutingNeeded: false, recommendedHospital: formData.hospitalPref, reason: "Patient is low risk." });
       }
 
     } catch (error) {
       console.error('Analysis error:', error);
-      alert('Error connecting to clinical services.');
+      // Clinical Fallback for demo stability
+      setResult({
+        urgencyLevel: 'Standard',
+        requiredSpecialty: 'General',
+        destination: 'Normal Ward',
+        explanation: 'Clinical AI system temporary fallback. Please proceed with manual oversight.'
+      });
+      setRoutingResult({ isRoutingNeeded: false, recommendedHospital: formData.hospitalPref });
     } finally {
       setLoading(false);
     }
@@ -109,7 +145,7 @@ export default function TriagePage() {
       const res = await fetch('/api/admit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           patientInfo: {
             name: formData.name,
             icNumber: formData.icNumber,
@@ -125,7 +161,7 @@ export default function TriagePage() {
       });
       const data = await res.json();
       if (data.success) {
-        setAdmitSuccess({ ...data, ward: result.destination, hospital: routingResult?.recommendedHospital || formData.hospitalPref });
+        setAdmitSuccess({ ...data, ward: result.destination, hospital: formData.hospitalPref });
       } else {
         alert(`Registration Failed: ${data.message || data.error}`);
       }
@@ -157,21 +193,21 @@ export default function TriagePage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <button 
+              <button
                 onClick={handleMyDigitalID}
                 className="btn btn-primary"
                 style={{ padding: '1rem', fontSize: '1.1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem' }}
               >
                 <span>🛡️</span> Register with MyDigital ID
               </button>
-              
+
               <div style={{ display: 'flex', alignItems: 'center', margin: '0.5rem 0' }}>
                 <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
                 <span style={{ padding: '0 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>OR</span>
                 <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
               </div>
 
-              <button 
+              <button
                 onClick={handleManualRegistration}
                 className="btn"
                 style={{ background: '#f8fafc', border: '1px solid var(--border)', padding: '1rem', color: 'var(--text-dark)' }}
@@ -185,61 +221,7 @@ export default function TriagePage() {
     );
   }
 
-  // 2. Admission Success Screen
-  if (admitSuccess) {
-    const isRedirected = admitSuccess.hospital !== formData.hospitalPref;
-
-    return (
-      <div className="container" style={{ maxWidth: '700px', marginTop: '2rem' }}>
-        <div className="card" style={{ borderLeft: '8px solid var(--success)', background: '#f0fdf4', textAlign: 'center', padding: '3rem 2rem' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
-            <h2 className="title" style={{ color: '#166534', fontSize: '1.8rem', marginBottom: '0.5rem' }}>Patient Successfully Registered</h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', margin: '2rem 0' }}>
-              <div style={{ background: 'white', padding: '1.5rem', borderRadius: '12px', width: '100%', maxWidth: '400px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '0.5rem' }}>Consultation Number</div>
-                <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px' }}>{admitSuccess.consultationNumber}</div>
-              </div>
-            </div>
-
-            {isRedirected ? (
-              <div style={{ background: '#fef3c7', padding: '1.5rem', borderRadius: '8px', border: '1px solid #fde68a', color: '#92400e', marginBottom: '2rem' }}>
-                <p style={{ fontWeight: 'bold', fontSize: '1.1rem', margin: '0 0 0.5rem 0' }}>Hospital Diversion Directed</p>
-                <p style={{ margin: 0 }}>You have been redirected to the nearest available hospital: <strong>{admitSuccess.hospital}</strong></p>
-              </div>
-            ) : (
-              <div style={{ background: 'white', padding: '1.5rem', borderRadius: '8px', border: '1px solid #bbf7d0', color: '#166534', marginBottom: '2rem', textAlign: 'left' }}>
-                <p style={{ margin: '0 0 0.5rem 0', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Assigned Care Pathway:</span> 
-                  <strong>{admitSuccess.ward === 'Emergency' || admitSuccess.ward === 'ICU' ? 'Emergency Ward' : 'Normal Consultation Queue'}</strong>
-                </p>
-                <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Location Instruction:</span>
-                  <strong>{admitSuccess.ward === 'Emergency' || admitSuccess.ward === 'ICU' ? 'Please proceed to Emergency Department immediately' : 'Please wait at the General Consultation Area'}</strong>
-                </p>
-              </div>
-            )}
-
-            <div>
-                <button 
-                  onClick={() => {
-                    setResult(null); 
-                    setAdmitSuccess(null); 
-                    setFlowState('initial');
-                    setFormData({name: '', icNumber: '', age: '', symptoms: '', heartRate: '', temp: '', hospitalPref: 'Hospital Sultan Ismail Johor Bahru'})
-                  }} 
-                  className="btn btn-primary"
-                  style={{ padding: '0.75rem 2rem' }}
-                >
-                  Register Next Patient
-                </button>
-            </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 3. Form and Triage Analysis View
+  // 2. Main Form Form UI (Admission Success mapped to Modal below)
   const maskedIC = formData.icNumber ? formData.icNumber.replace(/^(\d{6})-(\d{2})-/, '******-**-') : '';
 
   return (
@@ -356,53 +338,111 @@ export default function TriagePage() {
                 value={formData.hospitalPref}
                 onChange={(e) => setFormData({ ...formData, hospitalPref: e.target.value })}
               >
-                <option value="Hospital Sultan Ismail Johor Bahru">Johor Bahru (Sultan Ismail)</option>
-                <option value="Hospital Kuala Lumpur">Kuala Lumpur (HKL)</option>
-                <option value="Hospital Putrajaya">Putrajaya</option>
-                <option value="Hospital Sungai Buloh">Sungai Buloh</option>
+                {MALAYSIA_HOSPITALS.map(({ state, hospitals }) => (
+                  <optgroup key={state} label={state}>
+                    {hospitals.map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary" 
-            style={{ width: '100%', padding: '1rem', fontSize: '1.1rem', fontWeight: 'bold' }}
-            disabled={loading}
-          >
-            {loading ? 'Analyzing Clinical Priority...' : 'Registration Analysis'}
-          </button>
+          <div style={{ display: 'flex', gap: '1rem' }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ flex: 1, padding: '1rem', fontSize: '1.1rem', fontWeight: 'bold' }}
+              disabled={loading}
+            >
+              {loading ? 'Analyzing...' : '1. Clinical Analysis'}
+            </button>
+            <button
+              type="button"
+              onClick={handleRegister}
+              className="btn"
+              style={{
+                flex: 1,
+                padding: '1rem',
+                fontSize: '1.1rem',
+                fontWeight: 'bold',
+                background: result ? '#f1f5f9' : '#f1f5f9',
+                color: result ? 'black' : '#b6bcc9',
+                border: result ? 'none' : '1px solid var(--border)',
+                cursor: result ? 'pointer' : 'not-allowed'
+              }}
+              disabled={!result || admitLoading}
+            >
+              {admitLoading ? 'Processing...' : '2. Register'}
+            </button>
+          </div>
         </form>
       </section>
 
       {/* Post Analysis Area */}
       {result && (
         <div style={{ marginTop: '2rem' }}>
-          <div className="card" style={{ borderLeft: `8px solid var(--${result.urgencyLevel?.toLowerCase() === 'standard' ? 'low' : result.urgencyLevel?.toLowerCase()})`, marginBottom: '1.5rem' }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 className="title" style={{ margin: 0 }}>Triage: {result.urgencyLevel} Priority</h2>
-                <span className={`badge badge-${result.urgencyLevel?.toLowerCase()}`}>{result.urgencyLevel}</span>
-             </div>
-             <p><strong>Proposed Unit:</strong> {result.requiredSpecialty} ({result.destination})</p>
-             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{result.explanation}</p>
-          </div>
-
-          {routingResult && routingResult.isRoutingNeeded && (
-            <div className={`card`} style={{ background: '#fffbeb', border: '1px solid var(--border)', marginBottom: '1.5rem' }}>
-               <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>Hospital Optimization Required</h3>
-               <p style={{ margin: 0 }}><strong>Allocated to:</strong> {routingResult.recommendedHospital}</p>
-               <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{routingResult.reason}</p>
+          <div className="card" style={{ borderLeft: `8px solid var(--${result.urgencyLevel?.toLowerCase() === 'standard' ? 'low' : result.urgencyLevel?.toLowerCase()})`, marginBottom: '1.5rem', background: '#f8fafc' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+              <h2 className="title" style={{ margin: 0, fontSize: '1.3rem' }}>Analysis: {result.urgencyLevel} Priority</h2>
+              <span className={`badge badge-${result.urgencyLevel?.toLowerCase()}`}>{result.urgencyLevel}</span>
             </div>
-          )}
 
-          <button 
-            onClick={handleRegister}
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '1.25rem', fontSize: '1.2rem', background: 'var(--success)', border: 'none' }}
-            disabled={admitLoading}
-          >
-            {admitLoading ? 'Processing Saving...' : 'Register'}
-          </button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Triage & Specialty</h3>
+                <p style={{ fontWeight: '500', marginTop: '0.2rem' }}>{result.requiredSpecialty} Unit ({result.destination})</p>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-dark)' }}>{result.explanation}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post Registration Modal/Popup */}
+      {admitSuccess && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+          <div className="card" style={{ width: '90%', maxWidth: '500px', background: 'white', textAlign: 'center', borderLeft: (routingResult?.isRoutingNeeded) ? '8px solid var(--warning)' : '8px solid var(--success)' }}>
+
+            {(routingResult?.isRoutingNeeded) ? (
+              <>
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🚑</div>
+                <h2 style={{ color: '#92400e', marginBottom: '0.5rem' }}>Hospital Diversion Required</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Patient details recorded. Please follow rerouting instruction below.</p>
+                <div style={{ background: '#fef3c7', padding: '1.5rem', borderRadius: '12px', border: '1px solid #fde68a', color: '#92400e' }}>
+                  <p style={{ fontWeight: 'bold', fontSize: '1.1rem', margin: '0 0 0.5rem 0' }}>Routed Away from {admitSuccess.hospital}</p>
+                  <p style={{ margin: 0, fontSize: '0.9rem' }}>{routingResult.reason}</p>
+                  <p style={{ marginTop: '0.75rem', fontSize: '1.05rem' }}>Please safely proceed to: <strong>{routingResult.recommendedHospital}</strong></p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✅</div>
+                <h2 style={{ color: '#166534', marginBottom: '0.5rem' }}>Patient Registered</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Patient details securely recorded at {admitSuccess.hospital}.</p>
+                <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>Consultation Number</div>
+                  <div style={{ fontSize: '3rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '2px', marginBottom: '1rem' }}>{admitSuccess.consultationNumber}</div>
+                  <p style={{ margin: 0, fontSize: '1.1rem' }}>Please wait at: <strong>{admitSuccess.ward === 'Emergency' || admitSuccess.ward === 'ICU' ? 'Emergency Department' : 'Normal Consultation Area'}</strong></p>
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={() => {
+                setResult(null);
+                setAdmitSuccess(null);
+                setRoutingResult(null);
+                setFlowState('initial');
+                setFormData({ name: '', icNumber: '', age: '', symptoms: '', heartRate: '', temp: '', hospitalPref: 'Hospital Sultan Ismail Johor Bahru' })
+              }}
+              className="btn btn-primary"
+              style={{ padding: '0.75rem 2rem', marginTop: '2rem' }}
+            >
+              Ok. Next patient
+            </button>
+          </div>
         </div>
       )}
     </div>

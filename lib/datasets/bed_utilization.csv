@@ -1,6 +1,0 @@
-hospital_id,hospital_name,total_beds,occupied_beds,available_icu_beds,status_flag,location_coords
-H01,Hospital Kuala Lumpur (HKL),500,485,2,critical,"3.171,101.701"
-H02,Hospital Sungai Buloh,450,400,10,medium,"3.218,101.583"
-H03,Hospital Ampang,300,150,20,low,"3.129,101.763"
-H04,Hospital Selayang,350,340,1,critical,"3.245,101.644"
-H05,Hospital Putrajaya,250,180,15,low,"2.928,101.674"

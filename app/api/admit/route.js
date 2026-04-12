@@ -1,41 +1,40 @@
 import { NextResponse } from 'next/server';
 import { getHospitalCapacities } from '@/lib/ragParser';
-import { savePatientRecord, assignNextAvailableNurse } from '@/lib/firebase';
+import { savePatientRecord, assignNextAvailableNurse, assignNextAvailableDoctor } from '@/lib/firebase';
 
 export async function POST(req) {
   try {
     const { patientInfo, assessment, hospitalName, existingPatientId } = await req.json();
 
-    // 1. Check Capacity
+    // 1. Check Capacity (Allow registration but flag if heavily overloaded)
     const capacities = await getHospitalCapacities();
     const hospital = capacities.find(h => h.hospital.toLowerCase().includes(hospitalName.toLowerCase()));
-
+    
+    let isPhysicallyAdmittable = true;
     if (hospital) {
-      const dest = assessment.destination; // ICU | Normal Ward
+      const dest = assessment.destination; // ICU | Normal Ward | Emergency
       const util = dest === 'ICU' ? hospital.util_icu : hospital.util_nonicu;
-
-      if (util >= 100) {
-        return NextResponse.json({
-          success: false,
-          error: 'Full Capacity',
-          message: `The ${dest} unit at ${hospitalName} is currently at 100% capacity.`
-        }, { status: 400 });
-      }
+      const isCriticalAdmission = assessment.urgencyLevel === 'Critical' || dest === 'Emergency';
+      // Critical/Emergency patients are always admitted (emergency departments never turn away critical cases)
+      // Only flag capacity issue for standard admissions at 95%+
+      if (!isCriticalAdmission && util >= 95) isPhysicallyAdmittable = false;
     }
 
-    // 2. Assign Nurse
+    // 2. Assign Scope
     const nurse = await assignNextAvailableNurse(assessment.requiredSpecialty);
+    const doctor = await assignNextAvailableDoctor(assessment.requiredSpecialty);
 
     // 3. Save Patient
     const fullPatientRecord = {
       ...patientInfo,
-      riskLevel: assessment.riskLevel,
-      urgencyLevel: assessment.urgencyLevel,
-      requiredSpecialty: assessment.requiredSpecialty,
-      assignedWard: assessment.destination,
-      assignedNurseId: nurse.id,
+      riskLevel: assessment.riskLevel || 'Medium',
+      urgencyLevel: assessment.urgencyLevel || 'Standard',
+      requiredSpecialty: assessment.requiredSpecialty || 'General',
+      assignedWard: assessment.destination || 'Normal Ward',
+      assignedNurseId: nurse.id || null,
+      assignedDoctorId: doctor.id || null,
       status: (assessment.destination === 'Emergency' || assessment.destination === 'ICU') ? 'Admitted' : 'Waiting',
-      alerts: [assessment.recommendedAction],
+      alerts: assessment.recommendedAction ? [assessment.recommendedAction] : [],
       timestamp: new Date().toISOString()
     };
 
@@ -48,8 +47,10 @@ export async function POST(req) {
       success: true,
       patientId,
       assignedNurse: nurse.name,
+      assignedDoctor: doctor.name,
       ward: assessment.destination,
-      consultationNumber
+      consultationNumber,
+      isPhysicallyAdmittable
     });
 
   } catch (error) {

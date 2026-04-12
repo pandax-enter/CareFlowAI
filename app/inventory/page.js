@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { subscribeToInventory, updateInventoryStock } from '@/lib/firebase'
+import { subscribeToInventory, updateInventoryStock, realDb } from '@/lib/firebase'
+import { collection, addDoc } from 'firebase/firestore'
 
 export default function InventoryPage() {
   const [inventory, setInventory]         = useState([])
@@ -9,6 +10,12 @@ export default function InventoryPage() {
   const [insights, setInsights]           = useState(null)
   const [restockInput, setRestockInput]   = useState({}) // { [itemId]: quantity string }
   const [restocking, setRestocking]       = useState({}) // { [itemId]: boolean }
+
+  // New features
+  const [hiddenItems, setHiddenItems]     = useState(new Set())
+  const [showAddForm, setShowAddForm]     = useState(false)
+  const [newItem, setNewItem]             = useState({ name: '', stock: 0, minThreshold: 10, unit: 'units', dailyUsage: 2 })
+  const [isAdding, setIsAdding]           = useState(false)
 
   useEffect(() => {
     const unsubscribe = subscribeToInventory((data) => {
@@ -60,13 +67,43 @@ export default function InventoryPage() {
     }
   }
 
+  const handleAddNewItem = async (e) => {
+    e.preventDefault();
+    setIsAdding(true);
+    try {
+      await addDoc(collection(realDb, 'hospital_inventory'), {
+        ...newItem,
+        stock: parseInt(newItem.stock),
+        minThreshold: parseInt(newItem.minThreshold),
+        dailyUsage: parseInt(newItem.dailyUsage),
+        lastRestocked: new Date().toISOString()
+      });
+      alert("New supply added to system.");
+      setShowAddForm(false);
+      setNewItem({ name: '', stock: 0, minThreshold: 10, unit: 'units', dailyUsage: 2 });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add item to Firestore.");
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleRemoveFromUI = (itemId) => {
+    if (window.confirm("Remove this item from the current view? (Note: It will remain in the permanent database)")) {
+      setHiddenItems(prev => new Set([...prev, itemId]));
+    }
+  };
+
   const getStatusLabel = (item) => {
     if (item.stock <= 0) return { label: 'OUT OF STOCK', bg: '#fee2e2', color: '#ef4444' }
     if (item.stock < item.minThreshold) return { label: 'LOW STOCK', bg: '#ffedd5', color: '#f97316' }
     return { label: 'SUFFICIENT', bg: '#dcfce7', color: '#22c55e' }
   }
 
-  const sortedInventory = [...inventory].sort((a, b) => {
+  const sortedInventory = inventory
+    .filter(item => !hiddenItems.has(item.id))
+    .sort((a, b) => {
     const getScore = item => item.stock <= 0 ? 0 : item.stock < item.minThreshold ? 1 : 2;
     return getScore(a) - getScore(b);
   });
@@ -78,15 +115,55 @@ export default function InventoryPage() {
           <h1 className="title">Supply Intelligence</h1>
           <p style={{ color: 'var(--text-muted)' }}>Real-time inventory monitoring and predictive replenishment.</p>
         </div>
-        <button
-          id="inventory-analysis-btn"
-          className="btn btn-primary"
-          onClick={runAnalysis}
-          disabled={loading}
-        >
-          {loading ? 'Analyzing...' : 'Run AI Replenishment Analysis'}
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button
+            className="btn"
+            style={{ background: '#f1f5f9', border: '1px solid var(--border)' }}
+            onClick={() => setShowAddForm(!showAddForm)}
+          >
+            {showAddForm ? '✕ Close Form' : '➕ Add Item'}
+          </button>
+          <button
+            id="inventory-analysis-btn"
+            className="btn btn-primary"
+            onClick={runAnalysis}
+            disabled={loading}
+          >
+            {loading ? 'Analyzing...' : 'Run AI Replenishment Analysis'}
+          </button>
+        </div>
       </header>
+
+      {showAddForm && (
+        <section className="card" style={{ marginBottom: '2rem', borderTop: '4px solid var(--success)' }}>
+          <h2 className="title" style={{ fontSize: '1.1rem', marginBottom: '1.5rem' }}>Add New Clinical Supply</h2>
+          <form onSubmit={handleAddNewItem} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+             <div>
+               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold' }}>Item Name</label>
+               <input type="text" className="btn" style={{ width: '100%', textAlign: 'left', border: '1px solid var(--border)' }} value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} required />
+             </div>
+             <div>
+               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold' }}>Initial Stock</label>
+               <input type="number" className="btn" style={{ width: '100%', textAlign: 'left', border: '1px solid var(--border)' }} value={newItem.stock} onChange={e => setNewItem({...newItem, stock: e.target.value})} required />
+             </div>
+             <div>
+               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold' }}>Unit (vials, boxes, bags)</label>
+               <input type="text" className="btn" style={{ width: '100%', textAlign: 'left', border: '1px solid var(--border)' }} value={newItem.unit} onChange={e => setNewItem({...newItem, unit: e.target.value})} required />
+             </div>
+             <div>
+               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold' }}>Min Threshold</label>
+               <input type="number" className="btn" style={{ width: '100%', textAlign: 'left', border: '1px solid var(--border)' }} value={newItem.minThreshold} onChange={e => setNewItem({...newItem, minThreshold: e.target.value})} required />
+             </div>
+             <div>
+               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 'bold' }}>Avg Daily Usage</label>
+               <input type="number" className="btn" style={{ width: '100%', textAlign: 'left', border: '1px solid var(--border)' }} value={newItem.dailyUsage} onChange={e => setNewItem({...newItem, dailyUsage: e.target.value})} required />
+             </div>
+             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+               <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={isAdding}>{isAdding ? 'Adding...' : 'Add to Inventory'}</button>
+             </div>
+          </form>
+        </section>
+      )}
 
       <div className="dashboard-grid">
         {sortedInventory.map(item => {
@@ -100,7 +177,14 @@ export default function InventoryPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                 <div>
                   <h3 className="title" style={{ margin: 0, fontSize: '1.05rem' }}>{item.name}</h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {item.id}</span>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {item.id}</span>
+                    <button 
+                      onClick={() => handleRemoveFromUI(item.id)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.7rem', color: '#ef4444', padding: 0 }}
+                      title="Remove from UI view"
+                    >🗑️ Remove</button>
+                  </div>
                 </div>
                 <span style={{
                   padding: '0.2rem 0.6rem',
