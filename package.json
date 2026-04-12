@@ -4,10 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "powershell -Command \"Remove-Item -Recurse -Force .next, node_modules/.next -ErrorAction SilentlyContinue; exit 0\" && next dev",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -p $PORT"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
