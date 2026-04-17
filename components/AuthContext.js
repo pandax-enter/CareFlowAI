@@ -137,6 +137,10 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
+            // 1. Clear server-side session cookie
+            await fetch('/api/auth/logout', { method: 'POST' });
+            
+            // 2. Client-side Firebase sign out
             const { getAuth, signOut } = await import('firebase/auth');
             await signOut(getAuth());
         } catch (err) {

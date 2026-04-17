@@ -16,9 +16,36 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
     try {
-      await loginUser(email, password)
-      // Redirection is handled by the useEffect in AuthContext.js
-      // so we just need to wait for the auth state change.
+      const user = await loginUser(email, password)
+      
+      // Exchange token for session cookie (Fixes Cloud Run "Authenticating" delay)
+      if (user && typeof user.getIdToken === 'function') {
+        const idToken = await user.getIdToken()
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        })
+        
+        if (res.ok) {
+          const data = await res.json()
+          const ROLE_HOME = {
+            registration: '/',
+            nurse: '/dashboard',
+            doctor: '/doctor',
+            manager: '/manager',
+          }
+          // Immediate redirect using server-side role data
+          router.push(ROLE_HOME[data.user.role] || '/')
+          return
+        } else {
+          const errorData = await res.json()
+          throw new Error(errorData.error || 'Session creation failed')
+        }
+      } else {
+        // Fallback for mock mode or unexpected user object
+        router.push('/')
+      }
     } catch (err) {
       console.error('Login error:', err)
       setError(err.message || 'Invalid credentials. Please try again.')
