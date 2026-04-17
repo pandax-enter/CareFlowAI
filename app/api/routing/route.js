@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getHospitalCapacities } from '@/lib/ragParser';
-import { getDoctors } from '@/lib/firebase';
+import { getDoctorsAdmin } from '@/lib/firebase-admin';
 
 export async function POST(req) {
   let capacities = [];
@@ -15,7 +15,7 @@ export async function POST(req) {
 
     // Step 1: Perform RAG lookup on hospital capacities
     capacities = await getHospitalCapacities();
-    const doctors = await getDoctors();
+    const doctors = await getDoctorsAdmin();
 
     // GPS coordinates (lat, lng) for all hospitals in the RAG dataset.
     // Used by Haversine formula to compute exact road-distance approximations.

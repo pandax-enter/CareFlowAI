@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getHospitalCapacities } from '@/lib/ragParser';
-import { savePatientRecord, assignNextAvailableNurse, assignNextAvailableDoctor } from '@/lib/firebase';
+import { 
+  savePatientRecordAdmin, 
+  assignNextAvailableNurseAdmin, 
+  assignNextAvailableDoctorAdmin 
+} from '@/lib/firebase-admin';
 
 export async function POST(req) {
   try {
@@ -21,8 +25,8 @@ export async function POST(req) {
     }
 
     // 2. Assign Scope
-    const nurse = await assignNextAvailableNurse(assessment.requiredSpecialty);
-    const doctor = await assignNextAvailableDoctor(assessment.requiredSpecialty);
+    const nurse = await assignNextAvailableNurseAdmin(assessment.requiredSpecialty);
+    const doctor = await assignNextAvailableDoctorAdmin(assessment.requiredSpecialty);
 
     // 3. Save Patient
     const fullPatientRecord = {
@@ -38,7 +42,7 @@ export async function POST(req) {
       timestamp: new Date().toISOString()
     };
 
-    const patientId = await savePatientRecord(fullPatientRecord, existingPatientId);
+    const patientId = await savePatientRecordAdmin(fullPatientRecord, existingPatientId);
     
     // Generate a random Consultation Number (e.g. 1200)
     const consultationNumber = Math.floor(1000 + Math.random() * 9000);

@@ -159,9 +159,9 @@ export function Navbar() {
   );
 }
 
-export function AppShell({ children }) {
+export function AppShell({ children, initialAuth }) {
   return (
-    <AuthProvider>
+    <AuthProvider initialAuth={initialAuth}>
       <Navbar />
       <main>{children}</main>
     </AuthProvider>
