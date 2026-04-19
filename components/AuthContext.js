@@ -32,10 +32,16 @@ const canAccess = (role, path) => {
     return allowed.some(p => path === p || path.startsWith(p + '/'));
 };
 
-export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [roleData, setRoleData] = useState(null);
-    const [loading, setLoading] = useState(true);
+export const AuthProvider = ({ children, initialAuth }) => {
+    // Initialize state with server-side auth data to prevent UI flicker
+    const [user, setUser] = useState(initialAuth ? { email: initialAuth.email, uid: initialAuth.uid } : null);
+    const [roleData, setRoleData] = useState(initialAuth ? { 
+        role: initialAuth.role, 
+        linkedId: initialAuth.linkedId, 
+        department: initialAuth.department, 
+        name: initialAuth.name 
+    } : null);
+    const [loading, setLoading] = useState(!initialAuth); // Skip loading if we have server-side auth
     const router = useRouter();
     const pathname = usePathname();
 
