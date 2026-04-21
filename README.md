@@ -13,10 +13,12 @@ This project integrates Artificial Intelligence technologies:
 - All core ideas, system design, and final implementation decisions were made by the project team.
 ---
 ## 🎯 Features
-- 🤖 AI-based patient triage (severity classification)
-- 🏥 Smart hospital department routing
-- 👩‍⚕️ Nurse workload balancing system
-- 📊 Real-time dashboard & analytics
+- MyDigitalID registration and autofill
+- AI-based patient triage (severity classification)
+- Smart hospital department routing
+- Nurse workload balancing system
+- Real-time dashboard & analytics
+- AI prediction for supply restocking needs and timing
 ---
 ## 🧠 Architectural Overview
 User Input  
@@ -53,7 +55,7 @@ GEMINI_API_KEY=your_gemini_api_key
 ```
 npm run dev
 ```
-Open: http://localhost:3000
+5. Open: http://localhost:3000
 ---
 ## 📄 License
 This project was developed as part of the Project 2030 Hackathon.
