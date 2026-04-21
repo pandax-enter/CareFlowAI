@@ -6,7 +6,7 @@ CareFlow AI+ is an intelligent healthcare system that enhances hospital efficien
 ---
 ## ⚠️ Declaration of AI Usage
 This project integrates Artificial Intelligence technologies:
-Google Gemini AI is used for symptom analysis and triage classification
+- Google Gemini AI is used for symptom analysis and triage classification
 - AI assists in decision-making but does NOT replace professional medical judgment
 - All outputs are recommendations and should be validated by healthcare professionals 
 - This project was developed with the assistance of AI tools, including Antigravity and ChatGPT, to support code generation, refactoring, debugging, and performance optimization.
